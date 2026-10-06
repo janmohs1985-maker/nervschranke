@@ -38,6 +38,24 @@ main{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:22px 16px
 .fab{position:fixed;z-index:900;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:8px;
   padding:14px 20px;border-radius:999px;background:#F2F3F7;color:#0C0D12;font-weight:700;font-size:15px;white-space:nowrap;box-shadow:0 10px 30px rgba(0,0,0,.5)}
 .fab:active{transform:translateX(-50%) scale(.97)}
+.fab{transition:opacity .25s,transform .25s}
+.fab.away{opacity:0;pointer-events:none;transform:translateX(-50%) translateY(20px)}
+.meld{padding:16px;border-color:rgba(255,138,61,.28);background:linear-gradient(160deg,#221A14,#16171E 60%)}
+.meld .mh{display:flex;align-items:center;gap:12px}
+.meld .mk{font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--orange)}
+.meld .mtitle{font-size:18px;font-weight:700;margin-top:2px}
+.meld .ms{font-size:14px;color:var(--muted);line-height:1.45;margin-top:10px}
+.meld .ms b{color:var(--text)}
+.meld .chips{margin-top:14px}
+.in2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.inb{display:flex;align-items:center;justify-content:center;gap:9px;min-height:58px;border-radius:16px;font-size:16px;font-weight:700}
+.inb .ld{width:12px;height:12px;border-radius:50%;flex:none}
+.inb.zu{background:#2A1416;border:2px solid rgba(255,59,48,.55)}.inb.zu .ld{background:var(--red)}
+.inb.auf{background:#132519;border:2px solid rgba(61,220,132,.5)}.inb.auf .ld{background:var(--green)}
+.inb:active{transform:scale(.97)}
+.imsg{min-height:0;margin-top:10px;font-size:13px;color:var(--amber)}
+.imsg:empty{display:none}
+.imsg.ok{color:var(--green)}
 .sheet-bg{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55)}
 .sheet{position:fixed;z-index:1001;left:0;right:0;bottom:0;margin:0 auto;max-width:520px;background:var(--card);border-radius:28px 28px 0 0;
   border-top:1px solid rgba(255,255,255,.08);padding:12px 18px calc(26px + env(safe-area-inset-bottom));animation:up .3s ease-out}
@@ -200,6 +218,23 @@ footer a{color:var(--dim)}
   <div class="tiles" id="tiles"></div>
   <div class="tip" id="tip"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--green)"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><div><div class="k" id="tipK">SCHLEICHWEG-TIPP</div><div class="t" id="tipT">Zugdaten werden geholt …</div></div></div>
 
+  <section class="card meld" id="melden" aria-labelledby="meldT">
+    <div class="mh">
+      <svg width="44" height="24" viewBox="0 0 56 30" aria-hidden="true"><rect x="2" y="13" width="52" height="7" rx="3.5" fill="#fff"/><rect x="12" y="13" width="8" height="7" fill="#FF3B30"/><rect x="28" y="13" width="8" height="7" fill="#FF3B30"/><rect x="44" y="13" width="8" height="7" fill="#FF3B30"/><circle cx="6" cy="5" r="4" fill="#FF3B30"/></svg>
+      <div>
+        <div class="mk">SCHRANKE MELDEN</div>
+        <div class="mtitle" id="meldT">Du stehst gerade an einer Schranke?</div>
+      </div>
+    </div>
+    <div class="ms">Sag kurz, ob sie gerade <b>zu</b> oder <b>auf</b> ist. Sobald zwei dasselbe melden, sehen es alle hier – und die Vorhersage wird mit jeder Meldung genauer.</div>
+    <div class="chips" id="inX" role="group" aria-label="Welcher Übergang?"></div>
+    <div class="in2">
+      <button class="inb zu" id="inZu" type="button"><span class="ld"></span>Ist ZU</button>
+      <button class="inb auf" id="inAuf" type="button"><span class="ld"></span>Ist AUF</button>
+    </div>
+    <div class="imsg" id="inMsg" role="status"></div>
+  </section>
+
   <section class="band" id="band" aria-label="Gleisband mit Zügen und Schranken"></section>
 
   <section class="card tlc">
@@ -225,8 +260,8 @@ footer a{color:var(--dim)}
 </main>
 
 <button class="fab" id="fab" type="button">
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-  Ich steh dran – stimmt was nicht?
+  <svg width="26" height="14" viewBox="0 0 56 30" aria-hidden="true"><rect x="2" y="11" width="52" height="9" rx="4.5" fill="#0C0D12"/><rect x="14" y="11" width="9" height="9" fill="#FF3B30"/><rect x="32" y="11" width="9" height="9" fill="#FF3B30"/></svg>
+  Schranke melden
 </button>
 <div class="sheet-bg" id="sheetBg" hidden></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
@@ -269,6 +304,7 @@ function select(id) {
   sel = id;
   try { localStorage.setItem("schranke", id); } catch (e) {}
   history.replaceState(null, "", "#" + id);
+  if (typeof renderRepX === "function") { repX = id; renderRepX(); }
   const c = CROSSINGS.find(x => x.id === id);
   map.flyTo([c.lat, c.lon], 16, {duration: 1.1});
   buildBand(); render();
@@ -560,24 +596,37 @@ function openSheet(view) {
 }
 function closeSheet() { $("sheetBg").hidden = true; $("sheet").hidden = true; }
 function renderRepX() {
-  $("repX").innerHTML = CROSSINGS.map(c =>
+  const html = CROSSINGS.map(c =>
     `<button class="chip${c.id === repX ? " on" : ""}" data-x="${c.id}" aria-pressed="${c.id === repX}">${c.short}</button>`).join("");
+  $("repX").innerHTML = html; $("inX").innerHTML = html;
 }
-async function sendReport(state) {
+// where: "sheet" (Blatt vom schwebenden Knopf) oder "card" (Karte auf der Seite)
+async function sendReport(state, where) {
   const c = CROSSINGS.find(x => x.id === repX), at = new Date();
-  $("repMsg").textContent = "wird gesendet …";
+  const msg = where === "card" ? $("inMsg") : $("repMsg");
+  msg.className = where === "card" ? "imsg" : "msg"; msg.textContent = "wird gesendet …";
   const res = await postJSON("/api/report", {crossing: repX, state, device: deviceId, snapshot: snapshotFor(repX, nowD())});
   if (res.ok) {
     if (res.data?.crossings) LIVE = res.data.crossings;
     const more = VISITORS.confirm - 1;
-    $("doneT").textContent = `${c.name}: ${state} um ${at.toLocaleTimeString("de-DE", {timeZone: "Europe/Berlin"})}. ` +
-      (more > 0 ? `Sobald ${more === 1 ? "noch jemand" : more + " weitere"} dasselbe meldet, sehen es alle auf der Seite.` : "Alle sehen es jetzt auf der Seite.");
-    openSheet("done"); render();
+    const txt = `${c.name}: ${state} um ${at.toLocaleTimeString("de-DE", {timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit"})} gemeldet. ` +
+      (more > 0 ? `Sobald ${more === 1 ? "noch jemand" : more + " weitere"} dasselbe meldet, sehen es alle.` : "Alle sehen es jetzt.");
+    if (where === "card") { msg.className = "imsg ok"; msg.textContent = "Danke! " + txt; }
+    else { $("doneT").textContent = txt; openSheet("done"); }
+    render();
   } else {
-    $("repMsg").textContent = res.status === 429 ? "Du hast gerade schon gemeldet – in einer Minute wieder." : "Melden klappt gerade nicht. Später nochmal?";
+    msg.textContent = res.status === 429 ? "Du hast gerade schon gemeldet – in einer Minute wieder." : "Melden klappt gerade nicht. Später nochmal?";
   }
 }
 $("fab").addEventListener("click", () => openSheet("ask"));
+$("inZu").addEventListener("click", () => sendReport("zu", "card"));
+$("inAuf").addEventListener("click", () => sendReport("auf", "card"));
+$("inX").addEventListener("click", e => { const b = e.target.closest("[data-x]"); if (b) { repX = b.dataset.x; renderRepX(); $("inMsg").textContent = ""; } });
+renderRepX();
+// schwebenden Knopf nur zeigen, wenn die Melde-Karte nicht zu sehen ist
+if ("IntersectionObserver" in window) {
+  new IntersectionObserver(es => es.forEach(e => $("fab").classList.toggle("away", e.isIntersecting)), {threshold: 0.3}).observe($("melden"));
+}
 $("sheetBg").addEventListener("click", closeSheet);
 $("repCancel").addEventListener("click", closeSheet);
 $("doneOk").addEventListener("click", closeSheet);
