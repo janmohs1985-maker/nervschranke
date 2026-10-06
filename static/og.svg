@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <radialGradient id="warm" cx="8%" cy="0%" r="70%">
+      <stop offset="0" stop-color="#FF7832" stop-opacity=".30"/>
+      <stop offset="1" stop-color="#FF7832" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="green" cx="100%" cy="0%" r="60%">
+      <stop offset="0" stop-color="#3DDC84" stop-opacity=".18"/>
+      <stop offset="1" stop-color="#3DDC84" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#FF3B30" stop-opacity=".8"/>
+      <stop offset="1" stop-color="#FF3B30" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="arm"><rect x="0" y="-22" width="420" height="44" rx="22"/></clipPath>
+  </defs>
+  <rect width="1200" height="630" fill="#0C0D12"/>
+  <rect width="1200" height="630" fill="url(#warm)"/>
+  <rect width="1200" height="630" fill="url(#green)"/>
+
+  <!-- Text -->
+  <text x="72" y="118" font-family="Space Grotesk" font-weight="700" font-size="26" letter-spacing="5" fill="#FF8A3D">NERVSCHRANKE · NERSINGEN</text>
+  <text x="68" y="212" font-family="Space Grotesk" font-weight="700" font-size="78" letter-spacing="-2" fill="#F2F3F7">Ist die Schranke</text>
+  <text x="68" y="306" font-family="Space Grotesk" font-weight="700" font-size="78" letter-spacing="-2" fill="#F2F3F7">gerade zu?</text>
+  <text x="72" y="364" font-family="Space Grotesk" font-weight="500" font-size="26" fill="#9A9DAB">Live für Elchinger Straße, Waldstraße und Fichtenstraße</text>
+
+  <!-- Kacheln -->
+  <g font-family="Space Grotesk">
+    <rect x="72" y="408" width="196" height="148" rx="26" fill="#1E2029" stroke="#FF3B30" stroke-opacity=".6" stroke-width="2.5"/>
+    <circle cx="104" cy="442" r="11" fill="#FF3B30"/>
+    <text x="96" y="486" font-weight="600" font-size="24" fill="#F2F3F7">Elchinger</text>
+    <text x="94" y="530" font-family="JetBrains Mono" font-weight="700" font-size="38" fill="#FF6B5E">1:52</text>
+    <rect x="286" y="408" width="196" height="148" rx="26" fill="#16171E" stroke="#FFFFFF" stroke-opacity=".08" stroke-width="2"/>
+    <circle cx="318" cy="442" r="11" fill="#3DDC84"/>
+    <text x="310" y="486" font-weight="600" font-size="24" fill="#F2F3F7">Wald</text>
+    <text x="308" y="530" font-family="JetBrains Mono" font-weight="700" font-size="38" fill="#3DDC84">6:10</text>
+    <rect x="500" y="408" width="196" height="148" rx="26" fill="#16171E" stroke="#FFFFFF" stroke-opacity=".08" stroke-width="2"/>
+    <circle cx="532" cy="442" r="11" fill="#3DDC84"/>
+    <text x="524" y="486" font-weight="600" font-size="24" fill="#F2F3F7">Fichten</text>
+    <text x="522" y="530" font-family="JetBrains Mono" font-weight="700" font-size="38" fill="#3DDC84">6:25</text>
+  </g>
+
+  <!-- Schranke rechts -->
+  <g transform="translate(120 0)">
+  <circle cx="842" cy="190" r="90" fill="url(#glow)"/>
+  <rect x="790" y="160" width="190" height="60" rx="30" fill="#07080B"/>
+  <circle cx="842" cy="190" r="21" fill="#FF3B30"/>
+  <circle cx="928" cy="190" r="21" fill="#3A1512"/>
+  <rect x="822" y="220" width="40" height="300" rx="14" fill="#E6E7EC"/>
+  <rect x="798" y="504" width="88" height="24" rx="12" fill="#9A9DAB"/>
+  <g transform="translate(842 330) rotate(-8)">
+    <g clip-path="url(#arm)">
+      <rect x="0" y="-22" width="420" height="44" fill="#FFFFFF"/>
+      <rect x="50" y="-22" width="52" height="44" fill="#FF3B30"/>
+      <rect x="154" y="-22" width="52" height="44" fill="#FF3B30"/>
+      <rect x="258" y="-22" width="52" height="44" fill="#FF3B30"/>
+      <rect x="362" y="-22" width="52" height="44" fill="#FF3B30"/>
+    </g>
+  </g>
+  <circle cx="842" cy="330" r="20" fill="#2A2D38"/>
+  </g>
+  <!-- Gleis -->
+  <rect x="700" y="560" width="500" height="4" fill="#5A5E6C"/>
+  <rect x="700" y="576" width="500" height="4" fill="#5A5E6C"/>
+  <g fill="#3A3D49">
+    <rect x="712" y="556" width="10" height="28"/><rect x="752" y="556" width="10" height="28"/><rect x="792" y="556" width="10" height="28"/>
+    <rect x="832" y="556" width="10" height="28"/><rect x="872" y="556" width="10" height="28"/><rect x="912" y="556" width="10" height="28"/>
+    <rect x="952" y="556" width="10" height="28"/><rect x="992" y="556" width="10" height="28"/><rect x="1032" y="556" width="10" height="28"/>
+    <rect x="1072" y="556" width="10" height="28"/><rect x="1112" y="556" width="10" height="28"/><rect x="1152" y="556" width="10" height="28"/>
+  </g>
+  <text x="1128" y="118" text-anchor="end" font-family="JetBrains Mono" font-weight="700" font-size="24" fill="#6E7180">nervschranke.de</text>
+</svg>

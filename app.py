@@ -143,6 +143,11 @@ def datenschutz():
     return FileResponse(ROOT / "datenschutz.html", headers=NOCACHE)
 
 
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse(ROOT / "static" / "favicon-32.png", media_type="image/png")
+
+
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
 
