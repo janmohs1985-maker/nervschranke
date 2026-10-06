@@ -163,6 +163,28 @@ def need_admin(request: Request):
 # ---------------------------------------------------------------- App
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+# Sicherheits-Header für alle Antworten. Die Seite lädt nur von sich selbst – außer Kartenkacheln (OpenStreetMap)
+# und, als Notlösung ohne Server, Zugdaten direkt von Transitous. Inline-Skripte/-Stile sind in den Seiten nötig.
+SECURITY_HEADERS = {
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                               "img-src 'self' data: https://tile.openstreetmap.org; font-src 'self'; "
+                               "connect-src 'self' https://api.transitous.org; frame-ancestors 'self'; base-uri 'self'; "
+                               "form-action 'self'; object-src 'none'",
+    "X-Frame-Options": "SAMEORIGIN",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+}
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    resp = await call_next(request)
+    for k, v in SECURITY_HEADERS.items():
+        resp.headers.setdefault(k, v)
+    return resp
 NOCACHE = {"Cache-Control": "no-cache"}
 
 
