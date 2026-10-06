@@ -105,9 +105,18 @@ function parse(raw) {
   const P = {}; CROSSINGS.forEach(c => P[c.id] = []);
   const S = [], seenSeg = new Set(), seen = {}; CROSSINGS.forEach(c => seen[c.id] = new Set());
   const stLons = [], stationDep = {};
+  for (const s of raw) if (CFG.railModes.has(s.mode)) Object.assign(s, rtShift(s));
+  // Abfahrt in Nersingen nie vor der Ankunft desselben Zugs (+30 s Halt) – sonst gäbe es ihn kurz doppelt,
+  // z. B. wenn die DB für die Ankunft mehr Verspätung meldet als für die Abfahrt
+  const arrHere = {};
+  for (const s of raw) if (s._shift != null && s.to?.name?.includes(CFG.station)) arrHere[s.trips?.[0]?.tripId] = Date.parse(s.arrival) + s._shift;
+  for (const s of raw) {
+    if (s._shift == null || !s.from?.name?.includes(CFG.station)) continue;
+    const a = arrHere[s.trips?.[0]?.tripId], d = Date.parse(s.departure) + s._shift;
+    if (a && d < a + 30000) s._shift += a + 30000 - d;
+  }
   for (const s of raw) {
     if (!CFG.railModes.has(s.mode)) continue;
-    Object.assign(s, rtShift(s));
     if (s.from?.name?.includes(CFG.station) && !s._cancel) {
       const t = s.trips?.[0]?.tripId, d = new Date(Date.parse(s.departure) + s._shift);
       if (t && !isNaN(d) && (!stationDep[t] || d < stationDep[t])) stationDep[t] = d;
@@ -176,7 +185,9 @@ function parse(raw) {
       // 1 Hauptgleis → Augsburg). DB-Angabe, sonst: halten → Ulm auf 3, → Augsburg auf 1; durchfahren 2 bzw. 1.
       const plat = s._pl || (westbound ? (stops && !isLong ? "3" : "2") : "1");
       const mode = fromHere ? "ab" : toHere ? "an" : null;
-      if (!seenSeg.has(key)) { seenSeg.add(key); S.push({id: key, trip, name, kind, westbound, dep, arr, coords, cum, plat, mode}); }
+      // derselbe Zug aus zwei Datenquellen (z. B. „DRF“ und „WB 962“) nur einmal zeichnen
+      const twin = S.some(x => x.westbound === westbound && Math.abs(x.dep - dep) < 60000 && Math.abs(x.arr - arr) < 60000);
+      if (!twin && !seenSeg.has(key)) { seenSeg.add(key); S.push({id: key, trip, name, kind, westbound, dep, arr, coords, cum, plat, mode}); }
     }
   }
   // Hinter dem Bahnhof geht die Schranke frühestens zu, wenn derselbe Zug an der Schranke davor
@@ -289,7 +300,12 @@ const heading = (a, b) => Math.atan2((b[1] - a[1]) * Math.cos(a[0] * Math.PI / 1
 
 function liveTrains(d) {
   const out = [], moving = new Set();
-  for (const s of segments) { const p = interp(s, d); if (p) { out.push({...s, ...p, halt: false}); moving.add(s.trip); } }
+  // je Zug nur ein Abschnitt gleichzeitig (der frühere), damit er nie doppelt erscheint
+  for (const s of [...segments].sort((a, b) => a.dep - b.dep)) {
+    if (moving.has(s.trip)) continue;
+    const p = interp(s, d);
+    if (p) { out.push({...s, ...p, halt: false}); moving.add(s.trip); }
+  }
   for (const s of segments) {
     if (s.arr > d || moving.has(s.trip)) continue;
     const nexts = segments.filter(x => x.trip === s.trip && x.dep >= s.arr).map(x => +x.dep);
