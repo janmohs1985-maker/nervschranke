@@ -157,6 +157,26 @@ PREVIEWS = ("whatsapp", "telegrambot", "facebookexternalhit", "twitterbot", "sig
             "linkedinbot", "skypeuripreview", "applebot", "iframely", "embedly", "mastodon")
 _active = {}          # vhash → zuletzt gesehen (nur im Speicher, für „gerade auf der Seite“)
 _last_purge = [0.0]
+_peak_mem = {}        # Tag → höchste Zahl gleichzeitig (Zwischenspeicher, damit nicht jeder Abruf schreibt)
+
+
+def note_peak(n, ts):
+    """Höchste Zahl gleichzeitiger Besucher je Tag und insgesamt merken (kv: peak:<Tag>, peak:all = "n|ts")."""
+    day = datetime.fromtimestamp(ts, TZ).strftime("%Y-%m-%d")
+    if n <= _peak_mem.get(day, -1):
+        return
+    if day not in _peak_mem:
+        row = db("SELECT v FROM kv WHERE k=?", ("peak:" + day,), one=True)
+        _peak_mem[day] = int(row["v"].split("|")[0]) if row else 0
+        if n <= _peak_mem[day]:
+            return
+    _peak_mem[day] = n
+    db("INSERT INTO kv(k, v) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", ("peak:" + day, f"{n}|{ts:.0f}"))
+    best = db("SELECT v FROM kv WHERE k='peak:all'", one=True)
+    if not best or n > int(best["v"].split("|")[0]):
+        db("INSERT INTO kv(k, v) VALUES('peak:all', ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (f"{n}|{ts:.0f}",))
+    for d in [d for d in _peak_mem if d < day]:
+        _peak_mem.pop(d, None)
 
 
 def visitor_hash(request: Request, day: str):
@@ -489,6 +509,7 @@ def live(request: Request = None):
         _active[visitor_hash(request, datetime.now(TZ).strftime("%Y-%m-%d"))] = now
         for k in [k for k, v in _active.items() if v < now - 60]:
             _active.pop(k, None)
+        note_peak(len(_active), now)
     rows = db("SELECT * FROM reports WHERE ts > ? AND ignored=0 AND state IN ('zu','auf') ORDER BY ts", (now - 180,))
     conf = confirmed_ids(rows, cfg)
     out = {}
@@ -713,12 +734,23 @@ def admin_visits(request: Request, days: int = 30):
         hours[r["hour"]] = r["n"]
     refs = [{"ref": r["ref"], "n": r["n"]} for r in
             db("SELECT ref, COUNT(*) AS n FROM visits WHERE kind='view' AND ref IS NOT NULL AND day >= ? GROUP BY ref ORDER BY n DESC LIMIT 8", (first,))]
+    peaks = {r["k"][5:]: r["v"] for r in db("SELECT k, v FROM kv WHERE k >= ? AND k LIKE 'peak:%' AND k != 'peak:all'", ("peak:" + first,))}
+    for d in day_list:
+        per[d]["peak"] = int(peaks[d].split("|")[0]) if d in peaks else 0
+
+    def peak(key):
+        row = db("SELECT v FROM kv WHERE k=?", ("peak:" + key,), one=True)
+        if not row:
+            return None
+        n, ts = row["v"].split("|")
+        return {"n": int(n), "ts": float(ts)}
     series = [per[d] for d in day_list]
 
     def total(n, key):
         return sum(s[key] for s in series[-n:])
     return {
         "active": sum(1 for v in _active.values() if v > time.time() - 60),
+        "peakAll": peak("all"), "peakToday": peak(day_list[-1]),
         "today": series[-1],
         "yesterday": series[-2] if len(series) > 1 else None,
         "week": {"views": total(7, "views"), "uniques": total(7, "uniques"), "previews": total(7, "previews")},

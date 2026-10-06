@@ -245,13 +245,14 @@ async function loadVisits() {
   const pct = v.mobileShare == null ? "–" : Math.round(v.mobileShare * 100) + " %";
   $("vKpis").innerHTML = `
     <div class="card kpi"><div class="muted" style="font-size:12px"><span class="live-dot"></span>gerade auf der Seite</div><div class="v" style="color:var(--green)">${v.active}</div><div class="n">letzte Minute</div></div>
+    <div class="card kpi"><div class="muted" style="font-size:12px">Rekord gleichzeitig</div><div class="v" style="color:var(--orange)">${v.peakAll ? v.peakAll.n : "–"}</div><div class="n">${v.peakAll ? new Date(v.peakAll.ts * 1000).toLocaleString("de-DE", {timeZone: "Europe/Berlin", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit"}) + " Uhr" : "noch keiner"} · heute max. ${v.peakToday ? v.peakToday.n : 0}</div></div>
     <div class="card kpi"><div class="muted" style="font-size:12px">heute</div><div class="v">${v.today.uniques}</div><div class="n">Besucher · ${v.today.views} Aufrufe${v.yesterday ? ` · gestern ${v.yesterday.uniques}` : ""}</div></div>
     <div class="card kpi"><div class="muted" style="font-size:12px">7 Tage</div><div class="v">${v.week.uniques}</div><div class="n">Besucher · ${v.week.views} Aufrufe</div></div>
     <div class="card kpi"><div class="muted" style="font-size:12px">30 Tage</div><div class="v">${v.month.uniques}</div><div class="n">Besucher · ${v.month.views} Aufrufe · ${pct} Handy</div></div>
     <div class="card kpi"><div class="muted" style="font-size:12px">geteilt (Link-Vorschau)</div><div class="v" style="color:var(--orange)">${v.month.previews}</div><div class="n">30 Tage · heute ${v.today.previews}</div></div>`;
   const maxD = Math.max(1, ...v.days.map(d => d.views));
   $("vDays").innerHTML = v.days.map(d =>
-    `<div class="b" title="${dayName(d.day)}: ${d.uniques} Besucher, ${d.views} Aufrufe, ${d.reports} Meldungen, ${d.previews}× geteilt">
+    `<div class="b" title="${dayName(d.day)}: ${d.uniques} Besucher, ${d.views} Aufrufe, max. ${d.peak} gleichzeitig, ${d.reports} Meldungen, ${d.previews}× geteilt">
       <i style="height:${d.views / maxD * 100}%"></i><em style="height:${d.uniques / maxD * 100}%"></em></div>`).join("");
   const step = Math.ceil(v.days.length / 5);
   $("vDaysAxis").innerHTML = v.days.filter((d, i) => i % step === 0 || i === v.days.length - 1).map(d => `<span>${dayName(d.day)}</span>`).join("");
