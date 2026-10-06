@@ -46,6 +46,9 @@ h1{font-size:26px;font-weight:700;letter-spacing:-.02em;margin-top:4px}
 @keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(255,59,48,.45)}50%{box-shadow:0 0 0 14px rgba(255,59,48,0)}}
 @keyframes breatheG{0%,100%{box-shadow:0 0 0 0 rgba(61,220,132,.4)}50%{box-shadow:0 0 0 14px rgba(61,220,132,0)}}
 .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.btn2.obs{display:flex;align-items:center;justify-content:center}
+.btn2.obs.zu{border-color:rgba(255,59,48,.35)}
+.btn2.obs.auf{border-color:rgba(61,220,132,.35)}
 .btn2{padding:14px;border-radius:16px;background:var(--card);border:1px solid rgba(255,255,255,.08);font-weight:600;font-size:14px}
 .row{display:flex;align-items:center;gap:10px;padding:10px 14px}
 .row + .row{border-top:1px solid var(--stroke)}
@@ -116,7 +119,12 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
       <div><div class="lbl">MODELL SAGT</div><div style="font-size:15px;font-weight:600;margin-top:2px" id="modelTxt">lädt …</div></div>
       <div style="text-align:right"><div class="lbl">ZUG</div><div style="display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:2px" id="trainTxt">–</div></div>
     </div>
-    <button class="big auf" id="big" type="button"><div class="k" id="bigK">SCHRANKE IST AUF</div><div class="l" id="bigL">Jetzt ZU</div><div class="s" id="bigS">tippen, sobald sie runtergeht</div></button>
+    <button class="big auf" id="big" type="button"><div class="k" id="bigK">SCHRANKE IST AUF</div><div class="l" id="bigL">Geht gerade ZU</div><div class="s" id="bigS">genau im Moment tippen, wenn sie runtergeht</div></button>
+    <div class="lbl" style="margin:2px 4px -6px">KOMME GERADE AN – SIE WAR SCHON …</div>
+    <div class="two">
+      <button class="btn2 obs zu" id="obsZu" type="button"><span class="dot" style="display:inline-block;background:var(--red);margin-right:8px"></span>Ist schon zu</button>
+      <button class="btn2 obs auf" id="obsAuf" type="button"><span class="dot" style="display:inline-block;background:var(--green);margin-right:8px"></span>Ist schon auf</button>
+    </div>
     <div class="two">
       <button class="btn2" id="zug" type="button">Zug fährt gerade drüber</button>
       <button class="btn2 muted" id="undo" type="button">Letzte rückgängig</button>
@@ -171,7 +179,7 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
           <div class="ct"><b>Abweichung je Meldung</b>
             <div style="display:flex;gap:12px;font-size:12px" class="muted"><span><span class="dot" style="display:inline-block;background:var(--orange)"></span> Jan</span><span><span class="dot" style="display:inline-block;background:var(--blue)"></span> Besucher</span></div></div>
           <div class="chart" id="chart"></div>
-          <div class="mini" style="padding-top:8px">Oben: Schranke ging später als geschätzt · unten: früher · grüner Streifen: ±60 s</div>
+          <div class="mini" style="padding-top:8px">Oben: Schranke ging später als geschätzt · unten: früher · grüner Streifen: ±60 s · Punkt = genauer Moment, Ring = Beobachtung</div>
         </div>
       </div>
       <div class="side">
@@ -204,6 +212,9 @@ const LABELS = {
 };
 const fmtS = s => { if (s == null || isNaN(s)) return "–"; const sg = s < 0 ? "−" : ""; s = Math.abs(Math.round(s)); return sg + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
 const devTxt = d => d == null ? "" : (d >= 0 ? "+" : "−") + (Math.abs(d) < 60 ? Math.round(Math.abs(d)) + " s" : fmtS(Math.abs(d)));
+// „geht zu“ = genauer Moment, „war zu“ = Beobachtung (Besucher immer Beobachtung)
+const stateTxt = x => x.state === "zug" ? "Zug drüber" : x.exact ? `geht ${x.state}` : `war ${x.state}`;
+const resultTxt = x => x.dev == null ? "" : x.exact ? devTxt(x.dev) : x.match ? "stimmte" : "falsch " + devTxt(x.dev);
 const hms = ts => new Date(ts * 1000).toLocaleTimeString("de-DE", {timeZone: "Europe/Berlin"});
 const dayHms = ts => new Date(ts * 1000).toLocaleString("de-DE", {timeZone: "Europe/Berlin", weekday: "short", hour: "2-digit", minute: "2-digit"});
 function toast(t) { const e = $("toast"); e.textContent = t; e.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => e.hidden = true, 2200); }
@@ -264,25 +275,33 @@ function renderMessen() {
   $("trainTxt").innerHTML = snap ? `<span class="badge">${esc(snap.name)}</span><span class="mono" style="font-weight:700">${hm(new Date(snap.pass))}</span>` : "–";
   const big = $("big");
   big.className = "big " + (s.zu ? "zu" : "auf");
-  $("bigK").textContent = s.zu ? "SCHRANKE IST ZU SEIT " + fmtS((Date.now() - s.since) / 1000) : "SCHRANKE IST AUF";
-  $("bigL").textContent = s.zu ? "Jetzt AUF" : "Jetzt ZU";
-  $("bigS").textContent = s.zu ? "tippen, sobald sie hochgeht" : "tippen, sobald sie runtergeht";
+  $("bigK").textContent = !s.zu ? "SCHRANKE IST AUF"
+    : s.exact ? "SCHRANKE IST ZU SEIT " + fmtS((Date.now() - s.since) / 1000) : "SCHRANKE IST ZU · BEGINN UNBEKANNT";
+  $("bigL").textContent = s.zu ? "Geht gerade AUF" : "Geht gerade ZU";
+  $("bigS").textContent = s.zu ? "genau im Moment tippen, wenn sie hochgeht" : "genau im Moment tippen, wenn sie runtergeht";
 }
 
-async function measure(state) {
+// exact = genauer Moment (für die Schließzeiten), sonst Beobachtung (nur „stimmt / stimmt nicht“)
+async function measure(state, exact = true) {
   const snap = snapshotFor(xid, new Date());
-  const res = await postJSON("/api/admin/report", {crossing: xid, state, snapshot: snap});
+  const res = await postJSON("/api/admin/report", {crossing: xid, state, exact, snapshot: snap});
   if (res.status === 401) { location.reload(); return; }
   if (!res.ok) { toast("Speichern hat nicht geklappt"); return false; }
   lastId = res.data.id;
   if (navigator.vibrate) navigator.vibrate(40);
-  toast(state === "zug" ? "Zug gemerkt" : `${state.toUpperCase()} gemerkt` + (snap ? "" : " – kein Zug in der Nähe"));
+  toast(state === "zug" ? "Zug gemerkt" : (exact ? `Moment „${state}“ gemerkt` : `„ist ${state}“ gemerkt`) + (snap ? "" : " – kein Zug in der Nähe"));
   loadToday();
   return true;
 }
 $("big").addEventListener("click", async () => {
   const s = mState(), next = s.zu ? "auf" : "zu";
-  if (await measure(next)) { setMState({zu: next === "zu", since: Date.now()}); renderMessen(); }
+  if (await measure(next, true)) { setMState({zu: next === "zu", exact: true, since: Date.now()}); renderMessen(); }
+});
+$("obsZu").addEventListener("click", async () => {
+  if (await measure("zu", false)) { setMState({zu: true, exact: false, since: Date.now()}); renderMessen(); }
+});
+$("obsAuf").addEventListener("click", async () => {
+  if (await measure("auf", false)) { setMState({}); renderMessen(); }
 });
 $("zug").addEventListener("click", () => measure("zug"));
 $("undo").addEventListener("click", async () => {
@@ -298,12 +317,12 @@ async function loadToday() {
   const list = d.reports.filter(x => x.source === "admin").slice(0, 12);
   $("today").innerHTML = list.length ? list.map(x => {
     const name = CROSSINGS.find(c => c.id === x.crossing)?.short || x.crossing;
-    const col = x.dev == null ? "var(--dim)" : Math.abs(x.dev) <= 60 ? "var(--green)" : Math.abs(x.dev) <= 120 ? "var(--amber)" : "var(--redtxt)";
+    const col = x.dev == null ? "var(--dim)" : (!x.exact && x.match) || (x.exact && Math.abs(x.dev) <= 60) ? "var(--green)" : Math.abs(x.dev) <= 120 ? "var(--amber)" : "var(--redtxt)";
     const dotc = x.state === "zu" ? "var(--red)" : x.state === "auf" ? "var(--green)" : "var(--blue)";
     const tr = x.train ? ` · ${esc(x.train.name)} ${x.train.westbound ? "→ Ulm" : "→ Augsb."}` : " · kein Zug";
     return `<div class="row"><span class="mono" style="font-weight:700;font-size:13px;width:64px">${hms(x.ts)}</span><span class="dot" style="background:${dotc}"></span>
-      <span style="flex:1;font-size:13px">${name} ${x.state === "zug" ? "Zug drüber" : x.state}${tr}</span>
-      <span class="mono" style="font-size:12px;font-weight:700;color:${col}">${devTxt(x.dev)}</span></div>`;
+      <span style="flex:1;font-size:13px">${name} ${stateTxt(x)}${tr}</span>
+      <span class="mono" style="font-size:12px;font-weight:700;color:${col}">${resultTxt(x)}</span></div>`;
   }).join("") : `<div class="row muted">noch nichts</div>`;
 }
 
@@ -322,9 +341,9 @@ function renderAnalysis() {
   const A = analysis.crossings[xid], c = CROSSINGS.find(x => x.id === xid);
   const pct = A.hit == null ? "–" : Math.round(A.hit * 100) + " %";
   $("kpis").innerHTML = `
-    <div class="card kpi"><div class="muted" style="font-size:12px">Treffer (±60 s, 7 Tage)</div><div class="v" style="color:var(--green)">${pct}</div><div class="n">${c.short}</div></div>
+    <div class="card kpi"><div class="muted" style="font-size:12px">Treffer (7 Tage)</div><div class="v" style="color:var(--green)">${pct}</div><div class="n">Moment ±60 s oder Beobachtung stimmte</div></div>
     <div class="card kpi"><div class="muted" style="font-size:12px">mittlere Abweichung</div><div class="v">${A.meanDev == null ? "–" : Math.round(A.meanDev) + " s"}</div><div class="n">7 Tage</div></div>
-    <div class="card kpi"><div class="muted" style="font-size:12px">Meldungen (60 Tage)</div><div class="v">${A.counts.admin + A.counts.visitor}</div><div class="n">Jan ${A.counts.admin} · Besucher ${A.counts.visitor} (${A.counts.visitorConfirmed} bestätigt)</div></div>`;
+    <div class="card kpi"><div class="muted" style="font-size:12px">Meldungen (60 Tage)</div><div class="v">${A.counts.admin + A.counts.visitor}</div><div class="n">Jan ${A.counts.admin} · Besucher ${A.counts.visitor} (${A.counts.visitorConfirmed} bestätigt)<br>${A.counts.exact} genaue Momente · ${A.counts.observed} Beobachtungen</div></div>`;
   $("paramTitle").textContent = "Schließzeiten " + c.name;
   $("params").innerHTML = Object.entries(LABELS).map(([k, [fall, what]]) => {
     const p = A.params[k] || {}, model = p.model;
@@ -345,7 +364,7 @@ function renderAnalysis() {
   const y = d => 50 - Math.max(-300, Math.min(300, d)) / 300 * 46;
   $("chart").innerHTML = `<div class="ok" style="top:${y(60)}%;height:${y(-60) - y(60)}%"></div><div class="z"></div>
     <small style="top:2px">später</small><small style="bottom:2px">früher</small>` +
-    devs.map(d => `<span style="left:${t1 > t0 ? 2 + (d.ts - t0) / (t1 - t0) * 96 : 50}%;top:${y(d.dev)}%;background:${d.source === "admin" ? "var(--orange)" : "var(--blue)"}" title="${devTxt(d.dev)}"></span>`).join("") +
+    devs.map(d => `<span style="left:${t1 > t0 ? 2 + (d.ts - t0) / (t1 - t0) * 96 : 50}%;top:${y(d.dev)}%;${d.exact ? "background:" + (d.source === "admin" ? "var(--orange)" : "var(--blue)") : "border:2px solid " + (d.source === "admin" ? "var(--orange)" : "var(--blue)") + ";box-sizing:border-box"}" title="${d.exact ? "Moment " + devTxt(d.dev) : d.match ? "Beobachtung stimmte" : "Beobachtung falsch " + devTxt(d.dev)}"></span>`).join("") +
     (devs.length ? "" : `<small style="top:45%;left:30%">noch keine Messungen</small>`);
   // Meldungsliste
   const list = reportsData.filter(r => r.crossing === xid).slice(0, 40);
@@ -354,9 +373,9 @@ function renderAnalysis() {
       : r.source === "admin" ? ["Jan", "var(--orange)", "rgba(255,138,61,.15)"] : r.confirmed ? ["bestätigt", "var(--green)", "rgba(61,220,132,.13)"] : ["einzeln", "var(--muted)", "#22242D"];
     const dotc = r.state === "zu" ? "var(--red)" : r.state === "auf" ? "var(--green)" : "var(--blue)";
     const meta = (r.source === "admin" ? "Jan" : "Besucher") + (r.train ? ` · ${esc(r.train.name)} ${r.train.westbound ? "→ Ulm" : "→ Augsb."}` : "") +
-      (r.dev != null ? ` · Modell ${devTxt(r.dev)}` : "") + (r.why ? ` · ${r.why}` : "");
+      (r.dev != null ? ` · ${r.exact ? "Modell " : ""}${resultTxt(r)}` : "") + (r.why ? ` · ${r.why}` : "");
     return `<div class="row"><span class="dot" style="background:${dotc}"></span>
-      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${r.state === "zug" ? "Zug drüber" : r.state} · ${dayHms(r.ts)}</div><div class="muted" style="font-size:12px">${meta}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${stateTxt(r)} · ${dayHms(r.ts)}</div><div class="muted" style="font-size:12px">${meta}</div>
       <div style="display:flex;gap:12px;margin-top:4px"><button class="link" data-ign="${r.id}" data-v="${r.ignored ? 0 : 1}">${r.ignored ? "wieder zählen" : "ignorieren"}</button><button class="link" data-del="${r.id}">löschen</button></div></div>
       <span class="tag" style="color:${tag[1]};background:${tag[2]}">${tag[0]}</span></div>`;
   }).join("") : `<div class="row muted">noch keine Meldungen</div>`;

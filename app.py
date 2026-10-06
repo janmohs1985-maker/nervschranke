@@ -86,6 +86,11 @@ CREATE TABLE IF NOT EXISTS visits (
 CREATE INDEX IF NOT EXISTS visits_day ON visits(day);
 """)
 _db.commit()
+# exact=1: genauer Moment („geht gerade zu/auf“), exact=0: Beobachtung („ist schon zu/auf“, alle Besucher-Meldungen)
+if "exact" not in [r[1] for r in _db.execute("PRAGMA table_info(reports)")]:
+    _db.execute("ALTER TABLE reports ADD COLUMN exact INTEGER NOT NULL DEFAULT 0")
+    _db.execute("UPDATE reports SET exact=1 WHERE source='admin'")
+    _db.commit()
 
 
 def db(sql, args=(), one=False):
@@ -374,10 +379,13 @@ async def admin_report(request: Request):
     crossing, state = body.get("crossing"), body.get("state")
     if crossing not in CROSSINGS or state not in STATES:
         raise HTTPException(400, "ungültig")
-    db("INSERT INTO reports(ts, crossing, state, source, device, iphash, snapshot) VALUES(?,?,?,?,?,?,?)",
-       (time.time(), crossing, state, "admin", "jan", "", clean_snapshot(body.get("snapshot"))))
-    row = db("SELECT last_insert_rowid() AS id", one=True)
-    return {"ok": True, "id": row["id"]}
+    exact = 1 if body.get("exact", True) or state == "zug" else 0
+    with _db_lock:
+        cur = _db.execute("INSERT INTO reports(ts, crossing, state, source, device, iphash, snapshot, exact) VALUES(?,?,?,?,?,?,?,?)",
+                          (time.time(), crossing, state, "admin", "jan", "", clean_snapshot(body.get("snapshot")), exact))
+        _db.commit()
+        rid = cur.lastrowid
+    return {"ok": True, "id": rid}
 
 
 @app.delete("/api/admin/report/{rid}")
@@ -401,9 +409,14 @@ def evaluate(r, cfg):
         s = json.loads(r["snapshot"]) if r["snapshot"] else None
     except ValueError:
         s = None
+    exact = bool(r["exact"]) or r["state"] == "zug"
     out = {"id": r["id"], "ts": r["ts"], "crossing": r["crossing"], "state": r["state"], "source": r["source"],
-           "ignored": bool(r["ignored"]), "train": None, "dev": None, "param": None, "measured": None, "outlier": False}
+           "exact": exact, "match": None, "ignored": bool(r["ignored"]), "train": None, "dev": None, "param": None,
+           "measured": None, "outlier": False}
     if not s or "pass" not in s:
+        if not exact and r["state"] == "auf":  # „ist auf“ ohne Zug in der Nähe – passt zur Schätzung
+            out["match"], out["dev"] = True, 0.0
+            return out
         out["outlier"] = True
         out["why"] = "kein Zug in der Nähe"
         return out
@@ -411,6 +424,19 @@ def evaluate(r, cfg):
     out["train"] = {"name": s.get("name"), "kind": s.get("kind"), "westbound": s.get("westbound"), "case": s.get("case"),
                     "pass": ps}
     case = s.get("case") or "durch"
+    if not exact:
+        # Beobachtung: sagt nur, ob die Schätzung in diesem Moment stimmte – nicht, wann sie zu-/aufging
+        ts, model_zu, seen_zu = r["ts"], cf <= r["ts"] <= ct, r["state"] == "zu"
+        out["match"] = model_zu == seen_zu
+        if out["match"]:
+            out["dev"] = 0.0
+        elif seen_zu:  # war zu, Schätzung sagt offen
+            out["dev"] = ts - cf if ts < cf else ts - ct
+        else:          # war auf, Schätzung sagt zu
+            out["dev"] = ts - cf if ts - cf < ct - ts else ts - ct
+        if abs(out["dev"]) > 600:
+            out["outlier"], out["why"] = True, "über 10 Min. daneben"
+        return out
     if r["state"] == "zu":
         out["dev"] = r["ts"] - cf
         out["measured"] = ps - r["ts"]
@@ -465,7 +491,7 @@ def admin_analysis(request: Request, days: float = 60):
             if not trusted or e["ignored"] or e["outlier"]:
                 continue
             if e["dev"] is not None and r["state"] in ("zu", "auf"):
-                devs.append({"ts": r["ts"], "dev": e["dev"], "source": r["source"]})
+                devs.append({"ts": r["ts"], "dev": e["dev"], "source": r["source"], "exact": e["exact"], "match": e["match"]})
             if e["param"] in params and e["measured"] is not None:
                 params[e["param"]]["values"].append(e["measured"])
         for k, p in params.items():
@@ -477,12 +503,16 @@ def admin_analysis(request: Request, days: float = 60):
                 p["p75"] = v[(len(v) * 3) // 4] if len(v) > 1 else v[0]
                 p["suggest"] = int(round(p["median"] / 5) * 5) if len(v) >= 3 else None
         recent = [d for d in devs if d["ts"] > time.time() - 7 * 86400]
+        recent_exact = [d for d in recent if d["exact"]]
+        # Treffer: Moment ±60 s genau, Beobachtung = Schätzung lag richtig (zu/auf)
+        hits = [abs(d["dev"]) <= 60 if d["exact"] else bool(d["match"]) for d in recent]
         res[c] = {
             "params": params,
             "devs": devs[-200:],
-            "hit": (sum(abs(d["dev"]) <= 60 for d in recent) / len(recent)) if recent else None,
-            "meanDev": (sum(abs(d["dev"]) for d in recent) / len(recent)) if recent else None,
-            "counts": {"admin": n_admin, "visitor": n_vis, "visitorConfirmed": n_vis_ok},
+            "hit": (sum(hits) / len(hits)) if hits else None,
+            "meanDev": (sum(abs(d["dev"]) for d in recent_exact) / len(recent_exact)) if recent_exact else None,
+            "counts": {"admin": n_admin, "visitor": n_vis, "visitorConfirmed": n_vis_ok,
+                       "exact": sum(1 for d in devs if d["exact"]), "observed": sum(1 for d in devs if not d["exact"])},
         }
     return {"crossings": res, "config": cfg}
 
