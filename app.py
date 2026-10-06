@@ -597,9 +597,15 @@ async def admin_report(request: Request):
     if crossing not in CROSSINGS or state not in STATES:
         raise HTTPException(400, "ungültig")
     exact = 1 if body.get("exact", True) or state == "zug" else 0
+    now = time.time()
     with _db_lock:
+        # doppelt getippt: dieselbe Messung am selben Übergang innerhalb einer Minute zählt nur einmal
+        dup = _db.execute("SELECT id FROM reports WHERE source='admin' AND crossing=? AND state=? AND exact=? AND ts > ? "
+                          "ORDER BY ts DESC LIMIT 1", (crossing, state, exact, now - 60)).fetchone()
+        if dup:
+            return {"ok": True, "id": dup["id"], "dup": True}
         cur = _db.execute("INSERT INTO reports(ts, crossing, state, source, device, iphash, snapshot, exact) VALUES(?,?,?,?,?,?,?,?)",
-                          (time.time(), crossing, state, "admin", "jan", "", clean_snapshot(body.get("snapshot")), exact))
+                          (now, crossing, state, "admin", "jan", "", clean_snapshot(body.get("snapshot")), exact))
         _db.commit()
         rid = cur.lastrowid
     learn_invalidate()

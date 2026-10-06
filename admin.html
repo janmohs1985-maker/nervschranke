@@ -302,6 +302,7 @@ async function measure(state, exact = true) {
   if (!res.ok) { toast("Speichern hat nicht geklappt"); return false; }
   lastId = res.data.id;
   if (navigator.vibrate) navigator.vibrate(40);
+  if (res.data.dup) { toast("Schon gemerkt – doppelt getippt zählt nur einmal"); return true; }
   toast(state === "zug" ? "Zug gemerkt" : (exact ? `Moment „${state}“ gemerkt` : `„ist ${state}“ gemerkt`) + (snap ? "" : " – kein Zug in der Nähe"));
   loadToday();
   return true;
