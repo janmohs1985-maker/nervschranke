@@ -88,6 +88,8 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
 .set input[type=number]{width:80px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:var(--bg);font-family:var(--mono)}
 .mini{font-size:12px;color:var(--muted);padding:0 16px 14px}
 .link{color:var(--muted);font-size:12px;text-decoration:underline}
+.del{flex:none;width:36px;height:36px;margin:-6px -8px -6px 2px;border-radius:10px;display:grid;place-items:center;color:var(--dim)}
+.del:hover,.del:active{color:var(--redtxt);background:rgba(255,59,48,.12)}
 .vbars{display:flex;align-items:flex-end;gap:3px;height:150px;padding:6px 16px 0}
 .vbars .b{flex:1;min-width:0;position:relative;height:100%;display:flex;align-items:flex-end}
 .vbars .b i{position:absolute;left:0;right:0;bottom:0;border-radius:3px 3px 0 0;background:rgba(255,138,61,.75)}
@@ -315,7 +317,7 @@ async function loadToday() {
   const r = await fetch("/api/admin/reports?days=1", {cache: "no-store"});
   if (r.status === 401) { location.reload(); return; }
   const d = await r.json();
-  const list = d.reports.filter(x => x.source === "admin").slice(0, 12);
+  const list = d.reports.filter(x => x.source === "admin").slice(0, 30);
   $("today").innerHTML = list.length ? list.map(x => {
     const name = CROSSINGS.find(c => c.id === x.crossing)?.short || x.crossing;
     const col = x.dev == null ? "var(--dim)" : (!x.exact && x.match) || (x.exact && Math.abs(x.dev) <= 60) ? "var(--green)" : Math.abs(x.dev) <= 120 ? "var(--amber)" : "var(--redtxt)";
@@ -323,9 +325,22 @@ async function loadToday() {
     const tr = x.train ? ` · ${esc(x.train.name)} ${x.train.westbound ? "→ Ulm" : "→ Augsb."}` : " · kein Zug";
     return `<div class="row"><span class="mono" style="font-weight:700;font-size:13px;width:64px">${hms(x.ts)}</span><span class="dot" style="background:${dotc}"></span>
       <span style="flex:1;font-size:13px">${name} ${stateTxt(x)}${tr}</span>
-      <span class="mono" style="font-size:12px;font-weight:700;color:${col}">${resultTxt(x)}</span></div>`;
+      <span class="mono" style="font-size:12px;font-weight:700;color:${col}">${resultTxt(x)}</span>
+      <button class="del" type="button" data-del="${x.id}" aria-label="Messung ${hms(x.ts)} löschen">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>
+      </button></div>`;
   }).join("") : `<div class="row muted">noch nichts</div>`;
 }
+$("today").addEventListener("click", async e => {
+  const b = e.target.closest("[data-del]"); if (!b) return;
+  const row = b.closest(".row");
+  if (!confirm(`Messung von ${row.querySelector(".mono").textContent} löschen?`)) return;
+  const r = await fetch("/api/admin/report/" + b.dataset.del, {method: "DELETE"});
+  if (r.status === 401) { location.reload(); return; }
+  if (+b.dataset.del === lastId) lastId = null;
+  toast(r.ok ? "Gelöscht" : "Löschen hat nicht geklappt");
+  loadToday();
+});
 
 // ---------- Auswertung ----------
 async function loadAnalysis() {
