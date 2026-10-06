@@ -13,6 +13,7 @@ import sqlite3
 import statistics
 import threading
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
@@ -311,6 +312,117 @@ async def trips(request: Request):
             _trips_cache.pop(k, None)
         _trips_cache[q] = (time.time() + 30, body)
         return Response(body, media_type="application/json", headers={"X-Cache": "MISS"})
+
+# ---------------------------------------------------------------- DB-Echtzeit (Timetables-API)
+# Echte Ankunfts-/Abfahrtszeiten in Nersingen (RE/RB) und Ulm Hbf (ICE) – genauer als Transitous
+# (z. B. 6.10.2026: RB 15 in Nersingen Abfahrt 13:07 statt 13:06, Transitous kannte das nicht).
+# Schlüssel aus db.env; ohne Schlüssel liefert /api/realtime einfach nichts.
+DB_API = "https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1"
+DB_STATIONS = {"nersingen": "8004239", "ulm": "8000170"}
+_db_plan_cache = {}     # (eva, yymmddHH) → (gültig bis, [stops])
+_db_rt_cache = [0.0, None]
+_db_lock_rt = asyncio.Lock()
+
+
+def _db_headers():
+    cid, key = os.environ.get("DB_CLIENT_ID", "").strip(), os.environ.get("DB_API_KEY", "").strip()
+    return {"DB-Client-Id": cid, "DB-Api-Key": key, "Accept": "application/xml"} if cid and key else None
+
+
+def _db_ts(s):
+    """'2610061327' → Unix-Zeit (Europe/Berlin)."""
+    try:
+        return datetime.strptime(s, "%y%m%d%H%M").replace(tzinfo=TZ).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def _db_parse(xml_text):
+    out = {}
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return out
+    for s in root.findall("s"):
+        sid = s.get("id")
+        if not sid:
+            continue
+        e = out.setdefault(sid, {})
+        tl = s.find("tl")
+        if tl is not None:
+            e["n"], e["c"] = tl.get("n"), tl.get("c")
+        for k in ("ar", "dp"):
+            x = s.find(k)
+            if x is None:
+                continue
+            d = e.setdefault(k, {})
+            if x.get("pt"):
+                d["pt"] = _db_ts(x.get("pt"))
+            if x.get("ct"):
+                d["ct"] = _db_ts(x.get("ct"))
+            if x.get("ppth"):
+                d["path"] = x.get("ppth")
+            if x.get("cs") == "c":
+                d["cancel"] = True
+    return out
+
+
+async def _db_station(eva, hdr):
+    now = datetime.now(TZ)
+    stops = {}
+    for h in range(-1, 3):  # Plan der vorigen, aktuellen und nächsten zwei Stunden (Plan ändert sich kaum → 15 Min. merken)
+        slot = (now + timedelta(hours=h)).strftime("%y%m%d%H")
+        hit = _db_plan_cache.get((eva, slot))
+        if hit and hit[0] > time.time():
+            plan = hit[1]
+        else:
+            r = await _http.get(f"{DB_API}/plan/{eva}/{slot[:6]}/{slot[6:]}", headers=hdr)
+            plan = _db_parse(r.text) if r.status_code == 200 else {}
+            _db_plan_cache[(eva, slot)] = (time.time() + 900, plan)
+        for sid, e in plan.items():
+            stops[sid] = json.loads(json.dumps(e))
+    r = await _http.get(f"{DB_API}/fchg/{eva}", headers=hdr)
+    if r.status_code == 200:
+        for sid, ch in _db_parse(r.text).items():
+            if sid not in stops:
+                continue
+            for k in ("ar", "dp"):
+                if k in ch:
+                    stops[sid].setdefault(k, {}).update({kk: vv for kk, vv in ch[k].items() if kk in ("ct", "cancel")})
+    # nach Zugnummer, Zeiten in ms für die Seite
+    out = {}
+    for e in stops.values():
+        if not e.get("n"):
+            continue
+        item = {"cat": e.get("c")}
+        for k in ("ar", "dp"):
+            if k in e and e[k].get("pt"):
+                item[k] = {"pt": int(e[k]["pt"] * 1000), "ct": int((e[k].get("ct") or e[k]["pt"]) * 1000),
+                           "cancel": bool(e[k].get("cancel")), "path": e[k].get("path", "")}
+        out[e["n"]] = item
+    return out
+
+
+@app.get("/api/realtime")
+async def realtime():
+    hdr = _db_headers()
+    if not hdr:
+        return JSONResponse({"ok": False}, headers=NOCACHE)
+    if _db_rt_cache[1] and _db_rt_cache[0] > time.time():
+        return JSONResponse(_db_rt_cache[1], headers=NOCACHE)
+    async with _db_lock_rt:
+        if _db_rt_cache[1] and _db_rt_cache[0] > time.time():
+            return JSONResponse(_db_rt_cache[1], headers=NOCACHE)
+        try:
+            data = {"ok": True, "ts": time.time()}
+            for key, eva in DB_STATIONS.items():
+                data[key] = await _db_station(eva, hdr)
+        except Exception:
+            data = _db_rt_cache[1] or {"ok": False}
+        _db_rt_cache[0], _db_rt_cache[1] = time.time() + 45, data
+        for k in [k for k, v in _db_plan_cache.items() if v[0] < time.time() - 3600]:
+            _db_plan_cache.pop(k, None)
+        return JSONResponse(data, headers=NOCACHE)
 
 # ---------------------------------------------------------------- Modell + Meldungen (öffentlich)
 

@@ -61,21 +61,48 @@ function accelTime(d) {
   return d <= dMax ? Math.sqrt(2 * d / a) : v / a + (d - dMax) / v;
 }
 
+// DB-Echtzeit (vom eigenen Server, /api/realtime): echte Zeiten in Nersingen (RE/RB) und Ulm Hbf (ICE)
+let RT = null;
+const trainNumber = raw => { const m = (raw || "").match(/\((\d+)\)/) || (raw || "").match(/^[A-Za-z]+\s*(\d{2,6})$/); return m ? m[1] : null; };
+
+// Um wie viele ms ist der Abschnitt laut DB später als laut Transitous – und fällt er aus?
+function rtShift(s) {
+  const none = {_shift: 0, _cancel: false, _db: false};
+  const num = trainNumber(s.trips?.[0]?.routeShortName);
+  if (!RT || !RT.ok || !num) return none;
+  const from = s.from?.name || "", to = s.to?.name || "";
+  // Halt, an dem der Abschnitt beginnt (Abfahrt) bzw. endet (Ankunft) – Nersingen oder Ulm Hbf
+  let e = null, dep = true;
+  if (from.includes("Nersingen")) e = RT.nersingen?.[num]?.dp;
+  else if (to.includes("Nersingen")) { e = RT.nersingen?.[num]?.ar; dep = false; }
+  else if (/^Ulm Hauptbahnhof|^Ulm Hbf/.test(from)) e = RT.ulm?.[num]?.dp;
+  else if (/^Ulm Hauptbahnhof|^Ulm Hbf/.test(to)) { e = RT.ulm?.[num]?.ar; dep = false; }
+  if (!e) return none;
+  const sched = Date.parse(dep ? (s.scheduledDeparture || s.departure) : (s.scheduledArrival || s.arrival));
+  if (!(Math.abs(e.pt - sched) < 120000)) return none;   // nicht derselbe Halt
+  if (e.cancel) return {_shift: 0, _cancel: true, _db: true};
+  const tDelay = Date.parse(dep ? s.departure : s.arrival) - sched;
+  const shift = (e.ct - e.pt) - tDelay;
+  return {_shift: Math.abs(shift) >= 30000 ? shift : 0, _cancel: false, _db: true};
+}
+
 function parse(raw) {
   const P = {}; CROSSINGS.forEach(c => P[c.id] = []);
   const S = [], seenSeg = new Set(), seen = {}; CROSSINGS.forEach(c => seen[c.id] = new Set());
   const stLons = [], stationDep = {};
   for (const s of raw) {
-    if (CFG.railModes.has(s.mode) && s.from?.name?.includes(CFG.station)) {
-      const t = s.trips?.[0]?.tripId, d = new Date(s.departure);
+    if (!CFG.railModes.has(s.mode)) continue;
+    Object.assign(s, rtShift(s));
+    if (s.from?.name?.includes(CFG.station) && !s._cancel) {
+      const t = s.trips?.[0]?.tripId, d = new Date(Date.parse(s.departure) + s._shift);
       if (t && !isNaN(d) && (!stationDep[t] || d < stationDep[t])) stationDep[t] = d;
     }
   }
   for (const s of raw) {
-    if (!CFG.railModes.has(s.mode)) continue;
+    if (!CFG.railModes.has(s.mode) || s._cancel) continue;
     if (s.from?.name?.includes(CFG.station)) stLons.push(s.from.lon);
     if (s.to?.name?.includes(CFG.station)) stLons.push(s.to.lon);
-    const dep = new Date(s.departure), arr = new Date(s.arrival);
+    const dep = new Date(Date.parse(s.departure) + s._shift), arr = new Date(Date.parse(s.arrival) + s._shift);
     if (isNaN(dep) || isNaN(arr)) continue;
     const coords = decodePolyline(s.polyline);
     if (coords.length < 2) continue;
@@ -87,7 +114,7 @@ function parse(raw) {
     const fromHere = s.from.name.includes(CFG.station), toHere = s.to.name.includes(CFG.station);
     const stops = fromHere || toHere;
     let delay = null;
-    if (s.realTime && s.scheduledDeparture) delay = Math.round((dep - new Date(s.scheduledDeparture)) / 60000);
+    if ((s.realTime || s._db) && s.scheduledDeparture) delay = Math.round((dep - new Date(s.scheduledDeparture)) / 60000);
 
     // Länge entlang der Strecke (Meter) – lokale Projektion um Nersingen
     const lat0 = 48.43, lon0 = 10.12, kx = Math.cos(lat0 * Math.PI / 180) * 111320, ky = 110540;
@@ -164,9 +191,13 @@ async function refresh() {
     min: `${CFG.minLat},${CFG.minLon}`, max: `${CFG.maxLat},${CFG.maxLon}`, zoom: "15",
     startTime: new Date(now - 30 * 60000).toISOString(), endTime: new Date(now + 90 * 60000).toISOString(),
   });
+  // DB-Echtzeit parallel holen; fehlt sie, wird wie bisher nur mit Transitous gerechnet
+  const rtReq = location.protocol === "file:" ? Promise.resolve(null)
+    : fetch("/api/realtime", {cache: "no-store"}).then(r => r.ok ? r.json() : null).catch(() => null);
   for (const base of SOURCES) {
     try {
       const r = await fetch(base + "?" + q, {cache: "no-store"});
+      RT = await rtReq;
       if (!r.ok || !(r.headers.get("content-type") || "").includes("json")) continue;
       const {P, S} = parse(await r.json());
       passes = P; segments = S; loaded = new Date(); failed = false;
