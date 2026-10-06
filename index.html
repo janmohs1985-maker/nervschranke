@@ -127,12 +127,14 @@ h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-top:4px;line-heig
 /* Gleisband */
 .band{position:relative;height:250px;overflow:hidden;border-radius:var(--r);background:#14151C;border:1px solid var(--stroke)}
 .band .city{position:absolute;top:12px;font-size:11px;color:var(--dim);font-family:var(--mono)}
-.band .road{position:absolute;top:40px;width:22px;height:176px;background:#22242D;transform:translateX(-11px)}
+.band .road{position:absolute;top:36px;width:22px;height:182px;background:#22242D;transform:translateX(-11px)}
 .band .road.sel{background:#2A2D38;box-shadow:0 0 0 1px rgba(255,255,255,.08)}
-.band .plat{position:absolute;top:168px;height:12px;border-radius:3px;background:#2B2E39}
-.band .platl{position:absolute;top:186px;text-align:center;font-size:10px;color:var(--dim);font-family:var(--mono);transform:translateX(-50%);white-space:nowrap}
-.band .sleepers{position:absolute;left:0;right:0;height:8px;background:repeating-linear-gradient(90deg,#3A3D49 0 3px,transparent 3px 9px)}
-.band .rail{position:absolute;left:0;right:0;height:1.5px;background:#5A5E6C}
+.band .plat{position:absolute;height:12px;border-radius:3px;background:#2B2E39}
+.band .platl{position:absolute;top:198px;text-align:center;font-size:10px;color:var(--dim);font-family:var(--mono);transform:translateX(-50%);white-space:nowrap}
+.band .sleepers{position:absolute;height:8px;background:repeating-linear-gradient(90deg,#3A3D49 0 3px,transparent 3px 9px)}
+.band .rail{position:absolute;height:1.5px;background:#5A5E6C}
+.band .sw{position:absolute;height:1.5px;background:#5A5E6C;transform-origin:0 50%}
+.band .gl{position:absolute;font-size:9px;font-family:var(--mono);color:var(--dim)}
 .band .post{position:absolute;top:56px;width:5px;height:30px;border-radius:2px;background:#C9CBD3}
 .band .arm{position:absolute;top:56px;width:44px;height:6px;transform-origin:2px 3px;border-radius:3px;
   background:repeating-linear-gradient(90deg,#fff 0 7px,#FF3B30 7px 14px);transform:rotate(-72deg);transition:transform 1.1s ease-in-out}
@@ -152,8 +154,8 @@ h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-top:4px;line-heig
 .tr{position:absolute;left:0;will-change:transform}
 .tr .b{position:absolute;inset:0;box-shadow:0 4px 14px rgba(0,0,0,.45)}
 .tr .win{position:absolute}
-.tr .door{position:absolute;width:7px;background:#FFD27A;box-shadow:0 0 8px #FFD27A;opacity:0;transition:opacity .4s}
-.tr.halt .door{opacity:1}
+.tr .door{position:absolute;width:0;margin-left:3px;background:#FFD27A;box-shadow:0 0 8px #FFD27A;opacity:0;transition:width .7s ease-out .3s,margin-left .7s ease-out .3s,opacity .3s}
+.tr.halt .door{width:8px;margin-left:-1px;opacity:1}
 .tr.rb:not(.halt) .bob{animation:bob .35s ease-in-out infinite}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1px)}}
 .tr .wind{position:absolute;top:4px;display:flex;flex-direction:column;gap:5px;opacity:.55}
@@ -409,6 +411,22 @@ function renderTip(now) {
 // Ausschnitt maßstäblich: von knapp vor der Elchinger Straße bis knapp hinter die Fichtenstraße
 // (Elchinger → Bahnhof ~160 m, Bahnhof → Wald ~340 m, Wald → Fichten ~480 m)
 const BAND = {lonMin: CROSSINGS[0].lon - 0.0052, lonMax: CROSSINGS[2].lon + 0.0048};
+// Gleise und Bahnsteige in Nersingen laut OpenStreetMap (Längengrade). Von Nord nach Süd:
+// Gleis 3 = Nebengleis am Mittelbahnsteig (Regionalzüge → Ulm), Gleis 2 = Hauptgleis → Ulm, Gleis 1 = Hauptgleis → Augsburg
+const TRACKS = {
+  y3: 102, y2: 136, y1: 168,                 // Höhe im Bild (oben = Norden)
+  s3: [10.1150, 10.1272], swLen: 0.0006,     // Gleis 3 zwischen den Weichen
+  p23: [10.1166, 10.1189], p1: [10.11635, 10.1183],
+};
+function trackY(lon, plat) {
+  if (plat === "1") return TRACKS.y1;
+  if (plat !== "3") return TRACKS.y2;
+  const [a, b] = TRACKS.s3, w = TRACKS.swLen, y3 = TRACKS.y3, y2 = TRACKS.y2;
+  if (lon >= a && lon <= b) return y3;
+  if (lon > a - w && lon < a) return y2 + (y3 - y2) * (lon - (a - w)) / w;   // Weiche West
+  if (lon > b && lon < b + w) return y3 + (y2 - y3) * (lon - b) / w;         // Weiche Ost
+  return y2;
+}
 const trainEls = new Map();
 let bandW = 0;
 const bx = lon => (lon - BAND.lonMin) / (BAND.lonMax - BAND.lonMin) * bandW;
@@ -417,11 +435,25 @@ function buildBand() {
   const band = $("band");
   bandW = band.clientWidth;
   trainEls.clear();
-  const sx = bx(stationLon), pw = Math.max(34, bx(stationLon + .0013) - bx(stationLon - .0013));
   let h = `<div class="city" style="left:14px">← ULM</div><div class="city" style="right:14px">AUGSBURG →</div>`;
   for (const c of CROSSINGS) h += `<div class="road${c.id === sel ? " sel" : ""}" style="left:${bx(c.lon)}px"></div>`;
-  h += `<div class="plat" style="left:${sx - pw / 2}px;width:${pw}px"></div><div class="platl" style="left:${sx}px">BF NERSINGEN</div>`;
-  for (const y of [112, 148]) h += `<div class="sleepers" style="top:${y}px"></div><div class="rail" style="top:${y}px"></div><div class="rail" style="top:${y + 7}px"></div>`;
+  // Bahnsteige (OSM): Mittelbahnsteig zwischen Gleis 3 und 2, Hausbahnsteig südlich von Gleis 1
+  const p1 = [bx(TRACKS.p1[0]), bx(TRACKS.p1[1])], p23 = [bx(TRACKS.p23[0]), bx(TRACKS.p23[1])];
+  h += `<div class="plat" style="left:${p23[0]}px;width:${p23[1] - p23[0]}px;top:${TRACKS.y3 + 12}px;height:${TRACKS.y2 - TRACKS.y3 - 16}px"></div>`;
+  h += `<div class="plat" style="left:${p1[0]}px;width:${p1[1] - p1[0]}px;top:${TRACKS.y1 + 12}px"></div>`;
+  h += `<div class="platl" style="left:${(p1[0] + p1[1]) / 2}px">BF NERSINGEN</div>`;
+  // Gleise: 2 und 1 durchgehend, 3 nur zwischen den Weichen (kurz vor Elchinger bis kurz vor Fichten)
+  const track = (x0, x1, y) => `<div class="sleepers" style="left:${x0}px;width:${x1 - x0}px;top:${y}px"></div>` +
+    `<div class="rail" style="left:${x0}px;width:${x1 - x0}px;top:${y}px"></div><div class="rail" style="left:${x0}px;width:${x1 - x0}px;top:${y + 7}px"></div>`;
+  const sw = (lonA, yA, lonB, yB) => {   // Weiche als schräges Gleisstück
+    const xa = bx(lonA), xb = bx(lonB), len = Math.hypot(xb - xa, yB - yA), ang = Math.atan2(yB - yA, xb - xa) * 180 / Math.PI;
+    return [0, 7].map(o => `<div class="sw" style="left:${xa}px;top:${yA + o}px;width:${len}px;transform:rotate(${ang}deg)"></div>`).join("");
+  };
+  h += track(0, bandW, TRACKS.y1) + track(0, bandW, TRACKS.y2);
+  h += track(bx(TRACKS.s3[0]), bx(TRACKS.s3[1]), TRACKS.y3);
+  h += sw(TRACKS.s3[0] - TRACKS.swLen, TRACKS.y2, TRACKS.s3[0], TRACKS.y3) + sw(TRACKS.s3[1], TRACKS.y3, TRACKS.s3[1] + TRACKS.swLen, TRACKS.y2);
+  h += `<div class="gl" style="left:${bx(TRACKS.s3[0]) + 4}px;top:${TRACKS.y3 - 11}px">Gl. 3</div>`;
+  h += `<div class="gl" style="left:6px;top:${TRACKS.y2 - 11}px">Gl. 2</div><div class="gl" style="left:6px;top:${TRACKS.y1 - 11}px">Gl. 1</div>`;
   h += `<div id="trains"></div>`;
   for (const c of CROSSINGS) {
     const x = bx(c.lon);
@@ -471,7 +503,14 @@ function renderBand(now) {
   const live = loaded ? liveTrains(now) : [], seen = new Set();
   let shown = 0;
   for (const t of live) {
-    const x = bx(t.c[1]);
+    // Haltende Züge stehen mit der Spitze am Bahnsteigende in Fahrtrichtung (die Daten enden am Bahnhofspunkt):
+    // je näher am Bahnhof, desto mehr dorthin verschieben
+    let x = bx(t.c[1]);
+    if (t.mode || t.halt) {
+      const stop = t.westbound ? TRACKS.p23[0] + 0.0003 : TRACKS.p1[1] - 0.0003;
+      const f = Math.max(0, Math.min(1, 1 - Math.abs(t.c[1] - stationLon) / 0.006));
+      x += f * (bx(stop) - bx(stationLon));
+    }
     const sp = SPRITES[t.kind] || SPRITES.rb;
     if (x < -sp.w - 20 || x > bandW + sp.w + 20) continue;
     shown++; seen.add(t.id);
@@ -483,11 +522,15 @@ function renderBand(now) {
       el.innerHTML = `<div style="position:absolute;inset:0;${t.westbound ? "transform:scaleX(-1)" : ""}">${sp.html}</div>
         <div class="tag" style="color:${TAGCOL[t.kind] || "#fff"};${t.westbound ? "left:4px" : "right:4px"}">${esc(t.name)}</div>`;
       el.style.setProperty("--wd", "-30px");
+      el._tag = el.querySelector(".tag");
       host.appendChild(el); trainEls.set(t.id, el);
     }
     el.classList.toggle("halt", t.halt);
-    // Richtung Augsburg oben (Front rechts), Richtung Ulm unten (Front links)
-    const top = t.westbound ? 152 - sp.h : 116 - sp.h;
+    // hält am Bahnsteig: wann geht es weiter?
+    const tag = t.halt && t.until ? `${t.name} · ab in ${mmss(t.until - now)}` : t.halt ? `${t.name} · hält` : t.name;
+    if (el._tag.textContent !== tag) el._tag.textContent = tag;
+    // auf seinem Gleis (Front zeigt in Fahrtrichtung); Räder stehen auf der unteren Schiene
+    const top = trackY(t.c[1], t.plat) + 6 - sp.h;
     const left = t.westbound ? x : x - sp.w;
     el.style.transform = `translate(${left.toFixed(1)}px,${top}px)`;
   }

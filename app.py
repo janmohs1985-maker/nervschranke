@@ -362,6 +362,8 @@ def _db_parse(xml_text):
                 d["ct"] = _db_ts(x.get("ct"))
             if x.get("ppth"):
                 d["path"] = x.get("ppth")
+            if x.get("pp") or x.get("cp"):   # Gleis (geplant / geändert)
+                d["pl"] = x.get("cp") or x.get("pp")
             if x.get("cs") == "c":
                 d["cancel"] = True
     return out
@@ -388,7 +390,7 @@ async def _db_station(eva, hdr):
                 continue
             for k in ("ar", "dp"):
                 if k in ch:
-                    stops[sid].setdefault(k, {}).update({kk: vv for kk, vv in ch[k].items() if kk in ("ct", "cancel")})
+                    stops[sid].setdefault(k, {}).update({kk: vv for kk, vv in ch[k].items() if kk in ("ct", "cancel", "pl")})
     # nach Zugnummer, Zeiten in ms für die Seite
     out = {}
     for e in stops.values():
@@ -398,7 +400,7 @@ async def _db_station(eva, hdr):
         for k in ("ar", "dp"):
             if k in e and e[k].get("pt"):
                 item[k] = {"pt": int(e[k]["pt"] * 1000), "ct": int((e[k].get("ct") or e[k]["pt"]) * 1000),
-                           "cancel": bool(e[k].get("cancel")), "path": e[k].get("path", "")}
+                           "cancel": bool(e[k].get("cancel")), "path": e[k].get("path", ""), "pl": e[k].get("pl")}
         out[e["n"]] = item
     return out
 

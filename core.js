@@ -54,12 +54,6 @@ function kindOf(name, mode) {
   return "rb";
 }
 
-// Sekunden, die ein Zug ab Stillstand für d Meter braucht (bzw. beim Bremsen bis zum Halt):
-// gleichmäßig beschleunigen mit 0,6 m/s² bis 120 km/h, danach konstant
-function accelTime(d) {
-  const a = 0.6, v = 33.3, dMax = v * v / (2 * a);
-  return d <= dMax ? Math.sqrt(2 * d / a) : v / a + (d - dMax) / v;
-}
 
 // DB-Echtzeit (vom eigenen Server, /api/realtime): echte Zeiten in Nersingen (RE/RB) und Ulm Hbf (ICE)
 let RT = null;
@@ -67,7 +61,7 @@ const trainNumber = raw => { const m = (raw || "").match(/\((\d+)\)/) || (raw ||
 
 // Um wie viele ms ist der Abschnitt laut DB später als laut Transitous – und fällt er aus?
 function rtShift(s) {
-  const none = {_shift: 0, _cancel: false, _db: false};
+  const none = {_shift: 0, _cancel: false, _db: false, _pl: null};
   const num = trainNumber(s.trips?.[0]?.routeShortName);
   if (!RT || !RT.ok || !num) return none;
   const from = s.from?.name || "", to = s.to?.name || "";
@@ -80,10 +74,31 @@ function rtShift(s) {
   if (!e) return none;
   const sched = Date.parse(dep ? (s.scheduledDeparture || s.departure) : (s.scheduledArrival || s.arrival));
   if (!(Math.abs(e.pt - sched) < 120000)) return none;   // nicht derselbe Halt
-  if (e.cancel) return {_shift: 0, _cancel: true, _db: true};
+  if (e.cancel) return {_shift: 0, _cancel: true, _db: true, _pl: null};
   const tDelay = Date.parse(dep ? s.departure : s.arrival) - sched;
   const shift = (e.ct - e.pt) - tDelay;
-  return {_shift: Math.abs(shift) >= 30000 ? shift : 0, _cancel: false, _db: true};
+  const atHere = from.includes("Nersingen") || to.includes("Nersingen");
+  return {_shift: Math.abs(shift) >= 30000 ? shift : 0, _cancel: false, _db: true, _pl: atHere ? (e.pl || null) : null};
+}
+
+// Fahrprofil für Abschnitte, die in Nersingen beginnen ("ab") oder enden ("an"): gleichmäßig anfahren
+// bzw. bremsen (0,6 m/s²), sonst konstant – so, dass der Zug genau zur Fahrplanzeit ankommt.
+// Gleiche Rechnung für Durchfahrtszeit (Schranke) und Animation (Gleisband, Karte).
+function profileT1(L, D, a = 0.6) {
+  const q = D * D - 2 * L / a;
+  return q > 0 ? D - Math.sqrt(q) : null;   // Dauer der Anfahrphase; null = Abschnitt zu kurz → linear
+}
+function profilePos(tau, L, D, mode) {      // Strecke nach tau Sekunden
+  const t1 = profileT1(L, D), a = 0.6;
+  if (!mode || t1 == null) return L * Math.min(1, Math.max(0, tau / D));
+  const from = x => x <= t1 ? 0.5 * a * x * x : 0.5 * a * t1 * t1 + a * t1 * (x - t1);
+  return mode === "ab" ? from(Math.max(0, tau)) : L - from(Math.max(0, D - tau));
+}
+function profileTime(s, L, D, mode) {       // Sekunden bis zur Strecke s
+  const t1 = profileT1(L, D), a = 0.6;
+  if (!mode || t1 == null) return D * s / L;
+  const inv = x => x <= 0.5 * a * t1 * t1 ? Math.sqrt(2 * x / a) : t1 + (x - 0.5 * a * t1 * t1) / (a * t1);
+  return mode === "ab" ? inv(s) : D - inv(L - s);
 }
 
 function parse(raw) {
@@ -138,9 +153,8 @@ function parse(raw) {
       seen[c.id].add(trip);
       // Durchfahrt: Hält der Zug in Nersingen, fährt er dort an bzw. bremst – dann mit Anfahr-/Bremsweg
       // statt gleichmäßiger Geschwindigkeit rechnen (beobachtet 6.10.2026: RB 15 kam sonst ~1 Min. zu früh).
-      let pass = new Date(+dep + (arr - dep) * along / total);
-      if (fromHere) pass = new Date(Math.min(+arr, Math.max(+pass, +dep + accelTime(along) * 1000)));
-      else if (toHere) pass = new Date(Math.max(+dep, Math.min(+pass, +arr - accelTime(total - along) * 1000)));
+      const mode = fromHere ? "ab" : toHere ? "an" : null;
+      const pass = new Date(+dep + profileTime(along, total, (arr - dep) / 1000, mode) * 1000);
       // gleicher Zug aus einer zweiten Datenquelle (auch unter anderem Namen, z. B. „DRF“ und „WB 962“):
       // zwei verschiedene Züge können nicht innerhalb einer Minute in dieselbe Richtung über den Übergang fahren
       if (P[c.id].some(p => (p.name === name && Math.abs(p.pass - pass) < 120000) ||
@@ -158,7 +172,11 @@ function parse(raw) {
     }
     if (nearAny <= CFG.mapDistance) {
       const key = name + "|" + Math.floor(dep / 60000) + "|" + westbound;
-      if (!seenSeg.has(key)) { seenSeg.add(key); S.push({id: key, trip, name, kind, westbound, dep, arr, coords, cum}); }
+      // Gleis in Nersingen (laut OSM von Nord nach Süd: 3 Nebengleis am Mittelbahnsteig, 2 Hauptgleis → Ulm,
+      // 1 Hauptgleis → Augsburg). DB-Angabe, sonst: halten → Ulm auf 3, → Augsburg auf 1; durchfahren 2 bzw. 1.
+      const plat = s._pl || (westbound ? (stops && !isLong ? "3" : "2") : "1");
+      const mode = fromHere ? "ab" : toHere ? "an" : null;
+      if (!seenSeg.has(key)) { seenSeg.add(key); S.push({id: key, trip, name, kind, westbound, dep, arr, coords, cum, plat, mode}); }
     }
   }
   // Hinter dem Bahnhof geht die Schranke frühestens zu, wenn derselbe Zug an der Schranke davor
@@ -257,7 +275,8 @@ const nextAt = (id, d) => (passes[id] || []).find(p => p.closeFrom > d);
 function interp(s, d) {
   if (d < s.dep || d > s.arr) return null;
   const total = s.cum[s.cum.length - 1], span = s.arr - s.dep;
-  const target = span > 0 ? total * (d - s.dep) / span : 0;
+  // mit Fahrprofil: am Bahnhof Nersingen sanft bremsen bzw. anfahren
+  const target = span > 0 ? profilePos((d - s.dep) / 1000, total, span / 1000, s.mode) : 0;
   for (let k = 0; k < s.coords.length - 1; k++) {
     if (s.cum[k + 1] < target) continue;
     const len = s.cum[k + 1] - s.cum[k], t = len > 0 ? (target - s.cum[k]) / len : 0;
@@ -277,7 +296,7 @@ function liveTrains(d) {
     const until = nexts.length ? Math.min(...nexts) : +s.arr + 90000;
     if (+d > until || d - s.arr >= 600000) continue;
     const n = s.coords.length;
-    out.push({...s, c: s.coords[n - 1], h: heading(s.coords[n - 2], s.coords[n - 1]), halt: true});
+    out.push({...s, c: s.coords[n - 1], h: heading(s.coords[n - 2], s.coords[n - 1]), halt: true, until: nexts.length ? until : null});
     moving.add(s.trip);
   }
   return out;
