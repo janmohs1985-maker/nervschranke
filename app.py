@@ -22,7 +22,8 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 ROOT = Path(__file__).parent
 DATA = Path(os.environ.get("DATA_DIR", "/data"))
 DATA.mkdir(parents=True, exist_ok=True)
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+# strip(): Leerzeichen oder ein Windows-Zeilenende (\r) aus der .env-Datei sollen das Anmelden nicht verhindern
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "").strip().strip('"').strip("'")
 TRANSITOUS = "https://api.transitous.org/api/v1/map/trips"
 CROSSINGS = ("elchinger", "wald", "fichten")
 STATES = ("zu", "auf", "zug")
@@ -152,7 +153,7 @@ async def admin_login(request: Request):
     if _login_fail.get(key, 0) > time.time():
         await asyncio.sleep(2)
         return RedirectResponse("/admin?fehler=warte", status_code=303)
-    pw = str(form.get("passwort", ""))
+    pw = str(form.get("passwort", "")).strip()
     if not ADMIN_PASSWORD or not hmac.compare_digest(pw.encode(), ADMIN_PASSWORD.encode()):
         _login_fail[key] = time.time() + 5
         await asyncio.sleep(1)
