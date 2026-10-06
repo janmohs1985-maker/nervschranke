@@ -272,15 +272,15 @@ footer .legal a{color:var(--muted)}
     <div class="mh">
       <svg width="44" height="24" viewBox="0 0 56 30" aria-hidden="true"><rect x="2" y="13" width="52" height="7" rx="3.5" fill="#fff"/><rect x="12" y="13" width="8" height="7" fill="#FF3B30"/><rect x="28" y="13" width="8" height="7" fill="#FF3B30"/><rect x="44" y="13" width="8" height="7" fill="#FF3B30"/><circle cx="6" cy="5" r="4" fill="#FF3B30"/></svg>
       <div>
-        <div class="mk">SCHRANKE MELDEN</div>
+        <div class="mk">SCHRANKENSTATUS MELDEN</div>
         <div class="mtitle" id="meldT">Du stehst gerade an einer Schranke?</div>
       </div>
     </div>
-    <div class="ms">Sag kurz, ob sie gerade <b>zu</b> oder <b>auf</b> ist. Sobald zwei dasselbe melden, sehen es alle hier – und die Vorhersage wird mit jeder Meldung genauer.</div>
+    <div class="ms">Sag kurz, ob sie gerade <b>zu</b> oder <b>offen</b> ist. Sobald zwei dasselbe melden, sehen es alle hier – und die Vorhersage wird mit jeder Meldung genauer.</div>
     <div class="chips" id="inX" role="group" aria-label="Welcher Übergang?"></div>
     <div class="in2">
       <button class="inb zu" id="inZu" type="button"><span class="ld"></span>Ist ZU</button>
-      <button class="inb auf" id="inAuf" type="button"><span class="ld"></span>Ist AUF</button>
+      <button class="inb auf" id="inAuf" type="button"><span class="ld"></span>Ist OFFEN</button>
     </div>
     <div class="imsg" id="inMsg" role="status"></div>
     <div class="offer" id="inOffer" hidden>
@@ -321,14 +321,14 @@ footer .legal a{color:var(--muted)}
 
 <button class="fab" id="fab" type="button">
   <svg width="26" height="14" viewBox="0 0 56 30" aria-hidden="true"><rect x="2" y="11" width="52" height="9" rx="4.5" fill="#0C0D12"/><rect x="14" y="11" width="9" height="9" fill="#FF3B30"/><rect x="32" y="11" width="9" height="9" fill="#FF3B30"/></svg>
-  Schranke melden
+  Schrankenstatus melden
 </button>
 <div class="sheet-bg" id="sheetBg" hidden></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
   <div class="grip"></div>
   <div id="sheetAsk">
-    <div class="st" id="sheetTitle">Wie ist es gerade wirklich?</div>
-    <div class="ss">Deine Meldung hilft allen und macht die Vorhersage genauer.</div>
+    <div class="st" id="sheetTitle">Ist die Schranke gerade zu oder offen?</div>
+    <div class="ss">Zeigt die Seite etwas anderes, als du siehst? Sag es uns – damit werden die Zeiten für alle genauer.</div>
     <div class="sk">WELCHER ÜBERGANG?</div>
     <div class="chips" id="repX"></div>
     <div class="big2">
@@ -338,7 +338,7 @@ footer .legal a{color:var(--muted)}
       </button>
       <button class="bigb auf" id="repAuf" type="button">
         <svg width="56" height="30" viewBox="0 0 56 30" aria-hidden="true"><path d="M20 15l8 8 18-18" fill="none" stroke="#3DDC84" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>Ist gerade AUF</span>
+        <span>Ist gerade OFFEN</span>
       </button>
     </div>
     <div class="msg" id="repMsg" role="status"></div>
@@ -743,7 +743,7 @@ async function sendReport(state, where) {
   if (res.ok) {
     if (res.data?.crossings) LIVE = res.data.crossings;
     const more = VISITORS.confirm - 1;
-    const txt = `${c.name}: ${state} um ${at.toLocaleTimeString("de-DE", {timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit"})} gemeldet. ` +
+    const txt = `${c.name}: ${state === "auf" ? "offen" : "zu"} um ${at.toLocaleTimeString("de-DE", {timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit"})} gemeldet. ` +
       (more > 0 ? `Sobald ${more === 1 ? "noch jemand" : more + " weitere"} dasselbe meldet, sehen es alle.` : "Alle sehen es jetzt.");
     if (where === "card") { msg.className = "imsg ok"; msg.textContent = "Danke! " + txt; }
     else { $("doneT").textContent = txt; openSheet("done"); }
