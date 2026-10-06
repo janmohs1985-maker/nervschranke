@@ -151,7 +151,9 @@ function parse(raw) {
       const m = MODEL[c.id], kase = fromHere ? "ab" : toHere ? "an" : "durch";
       const before = kase === "durch" ? (isLong ? m.durch_before_long : m.durch_before) : m[kase + "_before"];
       const after = m[kase + "_after"];
-      P[c.id].push({id: trip, name, kind, isLong, westbound, stops, fromHere, case: kase, pass, delay,
+      // Woher kommt die Zeit? db = DB Timetables, rt = Echtzeit aus Transitous, plan = nur Fahrplan
+      const src = s._db ? "db" : s.realTime ? "rt" : "plan";
+      P[c.id].push({id: trip, name, kind, isLong, westbound, stops, fromHere, case: kase, pass, delay, src,
         closeFrom: new Date(+pass - before * 1000), closeTo: new Date(+pass + after * 1000)});
     }
     if (nearAny <= CFG.mapDistance) {
