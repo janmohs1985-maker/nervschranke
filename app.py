@@ -38,11 +38,11 @@ STATES = ("zu", "auf", "zug")
 DEFAULT_CONFIG = {
     "crossings": {
         "elchinger": {"durch_before": 120, "durch_before_long": 90, "durch_after": 30,
-                      "ab_before": 250, "ab_after": 55, "an_before": 120, "an_after": 45},
+                      "ab_before": 250, "ab_after": 55, "an_before": 120, "an_after": 45, "an_after_dep": 60},
         "wald": {"durch_before": 120, "durch_before_long": 90, "durch_after": 30,
-                 "ab_before": 250, "ab_after": 55, "an_before": 120, "an_after": 45},
+                 "ab_before": 250, "ab_after": 55, "an_before": 120, "an_after": 45, "an_after_dep": 60},
         "fichten": {"durch_before": 80, "durch_before_long": 60, "durch_after": 20,
-                    "ab_before": 250, "ab_after": 55, "an_before": 80, "an_after": 45},
+                    "ab_before": 250, "ab_after": 55, "an_before": 80, "an_after": 45, "an_after_dep": 60},
     },
     "visitors": {"confirm": 2, "window": 90, "rate": 60, "live": True},
 }
@@ -324,7 +324,7 @@ def clean_snapshot(s):
     if not isinstance(s, dict):
         return None
     keep = {}
-    for k in ("name", "kind", "case", "westbound", "long", "pass", "closeFrom", "closeTo", "delay"):
+    for k in ("name", "kind", "case", "westbound", "long", "pass", "closeFrom", "closeTo", "delay", "stationDep"):
         if k in s:
             keep[k] = s[k]
     return json.dumps(keep)[:2000]
@@ -425,7 +425,22 @@ async def admin_ignore(rid: int, request: Request):
     return {"ok": True}
 
 
-def evaluate(r, cfg):
+def actual_passes(rows):
+    """(Übergang, geschätzte Durchfahrt) → echte Durchfahrt laut „Zug fährt drüber“."""
+    out = {}
+    for r in rows:
+        if r["state"] != "zug" or r["ignored"] or not r["snapshot"]:
+            continue
+        try:
+            s = json.loads(r["snapshot"])
+        except ValueError:
+            continue
+        if s.get("pass") and abs(r["ts"] - s["pass"] / 1000) < 600:
+            out[(r["crossing"], round(s["pass"] / 1000))] = r["ts"]
+    return out
+
+
+def evaluate(r, cfg, actual_pass=None):
     """Abweichung einer Meldung zum Modell und welcher Wert damit gemessen wurde."""
     try:
         s = json.loads(r["snapshot"]) if r["snapshot"] else None
@@ -459,13 +474,24 @@ def evaluate(r, cfg):
         if abs(out["dev"]) > 600:
             out["outlier"], out["why"] = True, "über 10 Min. daneben"
         return out
+    # Hat Jan „Zug fährt drüber“ für denselben Zug gemeldet, ist das die echte Durchfahrt – dann werden
+    # die Schließzeiten getrennt vom Fehler im Fahrplan gemessen.
+    real = actual_pass.get((r["crossing"], round(ps))) if actual_pass else None
+    if real:
+        out["realPass"] = real
+    ref = real or ps
     if r["state"] == "zu":
         out["dev"] = r["ts"] - cf
-        out["measured"] = ps - r["ts"]
+        out["measured"] = ref - r["ts"]
         out["param"] = case + "_before" + ("_long" if case == "durch" and s.get("long") else "")
+    elif r["state"] == "auf" and case == "an" and s.get("stationDep"):
+        # Zug hält nach dem Übergang: Schranke geht erst nach seiner Abfahrt in Nersingen auf
+        out["dev"] = r["ts"] - ct
+        out["measured"] = r["ts"] - s["stationDep"] / 1000
+        out["param"] = "an_after_dep"
     elif r["state"] == "auf":
         out["dev"] = r["ts"] - ct
-        out["measured"] = r["ts"] - ps
+        out["measured"] = r["ts"] - ref
         out["param"] = case + "_after"
     else:  # Zug fährt drüber: wie genau stimmt die Durchfahrtszeit?
         out["dev"] = r["ts"] - ps
@@ -482,9 +508,10 @@ def admin_reports(request: Request, days: float = 7):
     cfg = get_config()
     rows = db("SELECT * FROM reports WHERE ts > ? ORDER BY ts DESC LIMIT 500", (time.time() - days * 86400,))
     conf = confirmed_ids(rows, cfg["visitors"])
+    real = actual_passes(rows)
     out = []
     for r in rows:
-        e = evaluate(r, cfg)
+        e = evaluate(r, cfg, real)
         e["confirmed"] = r["source"] == "admin" or r["id"] in conf
         out.append(e)
     return {"reports": out}
@@ -496,6 +523,7 @@ def admin_analysis(request: Request, days: float = 60):
     cfg = get_config()
     rows = db("SELECT * FROM reports WHERE ts > ? ORDER BY ts", (time.time() - days * 86400,))
     conf = confirmed_ids(rows, cfg["visitors"])
+    real = actual_passes(rows)
     res = {}
     for c in CROSSINGS:
         params = {k: {"model": cfg["crossings"][c][k], "values": []} for k in PARAM_KEYS}
@@ -509,7 +537,7 @@ def admin_analysis(request: Request, days: float = 60):
                 n_vis += 1
                 n_vis_ok += r["id"] in conf
             trusted = r["source"] == "admin" or r["id"] in conf
-            e = evaluate(r, cfg)
+            e = evaluate(r, cfg, real)
             if not trusted or e["ignored"] or e["outlier"]:
                 continue
             if e["dev"] is not None and r["state"] in ("zu", "auf"):

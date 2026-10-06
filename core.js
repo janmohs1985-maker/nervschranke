@@ -54,10 +54,23 @@ function kindOf(name, mode) {
   return "rb";
 }
 
+// Sekunden, die ein Zug ab Stillstand für d Meter braucht (bzw. beim Bremsen bis zum Halt):
+// gleichmäßig beschleunigen mit 0,6 m/s² bis 120 km/h, danach konstant
+function accelTime(d) {
+  const a = 0.6, v = 33.3, dMax = v * v / (2 * a);
+  return d <= dMax ? Math.sqrt(2 * d / a) : v / a + (d - dMax) / v;
+}
+
 function parse(raw) {
   const P = {}; CROSSINGS.forEach(c => P[c.id] = []);
   const S = [], seenSeg = new Set(), seen = {}; CROSSINGS.forEach(c => seen[c.id] = new Set());
-  const stLons = [];
+  const stLons = [], stationDep = {};
+  for (const s of raw) {
+    if (CFG.railModes.has(s.mode) && s.from?.name?.includes(CFG.station)) {
+      const t = s.trips?.[0]?.tripId, d = new Date(s.departure);
+      if (t && !isNaN(d) && (!stationDep[t] || d < stationDep[t])) stationDep[t] = d;
+    }
+  }
   for (const s of raw) {
     if (!CFG.railModes.has(s.mode)) continue;
     if (s.from?.name?.includes(CFG.station)) stLons.push(s.from.lon);
@@ -96,8 +109,15 @@ function parse(raw) {
       nearAny = Math.min(nearAny, best);
       if (best > CFG.passDistance || seen[c.id].has(trip)) continue;
       seen[c.id].add(trip);
-      const pass = new Date(+dep + (arr - dep) * along / total);
-      if (P[c.id].some(p => p.name === name && Math.abs(p.pass - pass) < 120000)) continue;
+      // Durchfahrt: Hält der Zug in Nersingen, fährt er dort an bzw. bremst – dann mit Anfahr-/Bremsweg
+      // statt gleichmäßiger Geschwindigkeit rechnen (beobachtet 6.10.2026: RB 15 kam sonst ~1 Min. zu früh).
+      let pass = new Date(+dep + (arr - dep) * along / total);
+      if (fromHere) pass = new Date(Math.min(+arr, Math.max(+pass, +dep + accelTime(along) * 1000)));
+      else if (toHere) pass = new Date(Math.max(+dep, Math.min(+pass, +arr - accelTime(total - along) * 1000)));
+      // gleicher Zug aus einer zweiten Datenquelle (auch unter anderem Namen, z. B. „DRF“ und „WB 962“):
+      // zwei verschiedene Züge können nicht innerhalb einer Minute in dieselbe Richtung über den Übergang fahren
+      if (P[c.id].some(p => (p.name === name && Math.abs(p.pass - pass) < 120000) ||
+                            (p.westbound === westbound && Math.abs(p.pass - pass) < 60000))) continue;
       // Geschätzte Schließzeiten. Hält der Zug in Nersingen und fährt danach über den Übergang,
       // ist die Schranke schon zu, während er am Bahnsteig steht (beobachtet 4.10.2026: ca. 4 Min. vorher).
       // Die Werte je Fall kommen aus MODEL (Server, im Admin-Bereich aus Messungen angepasst).
@@ -115,6 +135,14 @@ function parse(raw) {
   // Hinter dem Bahnhof geht die Schranke frühestens zu, wenn derselbe Zug an der Schranke davor
   // angekündigt wird – sonst wäre z. B. die Waldstraße vor der Elchinger Straße zu, obwohl der Zug
   // Richtung Augsburg erst über die Elchinger Straße kommt.
+  // Hält der Zug nach dem Übergang in Nersingen, bleibt die Schranke zu, bis er dort wieder abfährt
+  // (beobachtet 6.10.2026 Elchinger, RB 15 → Augsburg: auf erst 2½ Min. nach der Durchfahrt).
+  for (const id in P) for (const p of P[id]) {
+    if (p.case !== "an" || !stationDep[p.id]) continue;
+    p.stationDep = stationDep[p.id];
+    const t = new Date(+p.stationDep + MODEL[id].an_after_dep * 1000);
+    if (t > p.closeTo) p.closeTo = t;
+  }
   const byTrip = {};
   for (const id in P) for (const p of P[id]) (byTrip[p.id] = byTrip[p.id] || []).push(p);
   for (const list of Object.values(byTrip)) {
@@ -150,9 +178,9 @@ async function refresh() {
 
 // Schätzwerte kommen vom Server (/api/config), im Admin-Bereich anpassbar. Ohne Server gelten diese.
 const MODEL = {
-  elchinger: {durch_before: 120, durch_before_long: 90, durch_after: 30, ab_before: 250, ab_after: 55, an_before: 120, an_after: 45},
-  wald:      {durch_before: 120, durch_before_long: 90, durch_after: 30, ab_before: 250, ab_after: 55, an_before: 120, an_after: 45},
-  fichten:   {durch_before: 80,  durch_before_long: 60, durch_after: 20, ab_before: 250, ab_after: 55, an_before: 80,  an_after: 45},
+  elchinger: {durch_before: 120, durch_before_long: 90, durch_after: 30, ab_before: 250, ab_after: 55, an_before: 120, an_after: 45, an_after_dep: 60},
+  wald:      {durch_before: 120, durch_before_long: 90, durch_after: 30, ab_before: 250, ab_after: 55, an_before: 120, an_after: 45, an_after_dep: 60},
+  fichten:   {durch_before: 80,  durch_before_long: 60, durch_after: 20, ab_before: 250, ab_after: 55, an_before: 80,  an_after: 45, an_after_dep: 60},
 };
 const VISITORS = {confirm: 2, window: 90, rate: 60, live: true};
 async function loadConfig() {
@@ -174,7 +202,8 @@ function snapshotFor(id, d) {
   }
   if (!best) return null;
   return {name: best.name, kind: best.kind, case: best.case, westbound: best.westbound, long: best.isLong,
-    pass: +best.pass, closeFrom: +best.closeFrom, closeTo: +best.closeTo, delay: best.delay};
+    pass: +best.pass, closeFrom: +best.closeFrom, closeTo: +best.closeTo, delay: best.delay,
+    stationDep: best.stationDep ? +best.stationDep : null};
 }
 
 const deviceId = (() => {
