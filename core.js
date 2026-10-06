@@ -221,7 +221,36 @@ function parse(raw) {
   return {P, S};
 }
 
+// Fertiges Ergebnis vom Server (/api/state) in die Form der Seite bringen (Date statt ms, Fahrweg entpacken)
+function fromState(st) {
+  const P = {};
+  for (const id in st.passes) P[id] = st.passes[id].map(p => ({...p, pass: new Date(p.pass), closeFrom: new Date(p.closeFrom),
+    closeTo: new Date(p.closeTo), stationDep: p.stationDep ? new Date(p.stationDep) : undefined}));
+  const lat0 = 48.43, lon0 = 10.12, kx = Math.cos(lat0 * Math.PI / 180) * 111320, ky = 110540;
+  const S = st.segments.map(s => {
+    const coords = decodePolyline(s.poly), cum = [0];
+    for (let k = 0; k < coords.length - 1; k++)
+      cum.push(cum[k] + Math.hypot((coords[k + 1][1] - coords[k][1]) * kx, (coords[k + 1][0] - coords[k][0]) * ky));
+    return {...s, dep: new Date(s.dep), arr: new Date(s.arr), coords, cum};
+  });
+  if (st.stationLon) stationLon = st.stationLon;
+  if (st.model) for (const id in MODEL) Object.assign(MODEL[id], st.model[id] || {});
+  if (st.visitors) Object.assign(VISITORS, st.visitors);
+  return {P, S};
+}
+
 async function refresh() {
+  // Normalfall: der Server rechnet (gleiche Werte wie App und Widgets)
+  if (location.protocol !== "file:") {
+    try {
+      const r = await fetch("/api/state", {cache: "no-store"});
+      if (r.ok) {
+        const {P, S} = fromState(await r.json());
+        passes = P; segments = S; loaded = new Date(); failed = false;
+        if (window.onData) window.onData(); return;
+      }
+    } catch (e) { /* unten selbst rechnen */ }
+  }
   const now = Math.floor(Date.now() / 60000) * 60000;  // gerundet: Server-Zwischenspeicher greift für alle
   const q = new URLSearchParams({
     min: `${CFG.minLat},${CFG.minLon}`, max: `${CFG.maxLat},${CFG.maxLon}`, zoom: "15",

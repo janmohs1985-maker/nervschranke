@@ -14,7 +14,9 @@ import statistics
 import threading
 import time
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
+
+import model
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
@@ -306,14 +308,20 @@ async def trips(request: Request):
     start, end = request.query_params.get("startTime", ""), request.query_params.get("endTime", "")
     if not start or not end:
         raise HTTPException(400, "startTime/endTime fehlt")
+    body, how = await trips_body(start, end)
+    return Response(body, media_type="application/json", headers={"X-Cache": how})
+
+
+async def trips_body(start, end):
+    """Transitous-Abschnitte (Regional + Fernzüge) als JSON-Bytes, 30 s zwischengespeichert."""
     q = start + "|" + end
     hit = _trips_cache.get(q)
     if hit and hit[0] > time.time():
-        return Response(hit[1], media_type="application/json", headers={"X-Cache": "HIT"})
+        return hit[1], "HIT"
     async with _trips_lock:
         hit = _trips_cache.get(q)
         if hit and hit[0] > time.time():
-            return Response(hit[1], media_type="application/json", headers={"X-Cache": "HIT"})
+            return hit[1], "HIT"
         try:
             near, wide = await asyncio.gather(
                 _http.get(TRANSITOUS, params={**NEAR, "startTime": start, "endTime": end}),
@@ -330,12 +338,12 @@ async def trips(request: Request):
             body = json.dumps(segs).encode()
         except Exception:
             if hit:  # lieber alte Daten als keine
-                return Response(hit[1], media_type="application/json", headers={"X-Cache": "STALE"})
+                return hit[1], "STALE"
             raise HTTPException(502, "Transitous nicht erreichbar")
         for k in [k for k, v in _trips_cache.items() if v[0] < time.time() - 300]:
             _trips_cache.pop(k, None)
         _trips_cache[q] = (time.time() + 30, body)
-        return Response(body, media_type="application/json", headers={"X-Cache": "MISS"})
+        return body, "MISS"
 
 # ---------------------------------------------------------------- DB-Echtzeit (Timetables-API)
 # Echte Ankunfts-/Abfahrtszeiten in Nersingen (RE/RB) und Ulm Hbf (ICE) – genauer als Transitous
@@ -431,14 +439,18 @@ async def _db_station(eva, hdr):
 
 @app.get("/api/realtime")
 async def realtime():
+    return JSONResponse(await realtime_data(), headers=NOCACHE)
+
+
+async def realtime_data():
     hdr = _db_headers()
     if not hdr:
-        return JSONResponse({"ok": False}, headers=NOCACHE)
+        return {"ok": False}
     if _db_rt_cache[1] and _db_rt_cache[0] > time.time():
-        return JSONResponse(_db_rt_cache[1], headers=NOCACHE)
+        return _db_rt_cache[1]
     async with _db_lock_rt:
         if _db_rt_cache[1] and _db_rt_cache[0] > time.time():
-            return JSONResponse(_db_rt_cache[1], headers=NOCACHE)
+            return _db_rt_cache[1]
         try:
             data = {"ok": True, "ts": time.time()}
             for key, eva in DB_STATIONS.items():
@@ -448,7 +460,34 @@ async def realtime():
         _db_rt_cache[0], _db_rt_cache[1] = time.time() + 45, data
         for k in [k for k, v in _db_plan_cache.items() if v[0] < time.time() - 3600]:
             _db_plan_cache.pop(k, None)
-        return JSONResponse(data, headers=NOCACHE)
+        return data
+
+
+# ---------------------------------------------------------------- Zentrale Rechnung
+# Der Server rechnet die Schranken für alle (Webseite, iPhone-App, Widgets): Transitous + DB-Echtzeit +
+# gelernte Schätzwerte → je Übergang Durchfahrten mit Schließzeiten und die Züge für Gleisband/Karte.
+_state_cache = [0.0, None]
+_state_lock = asyncio.Lock()
+
+
+@app.get("/api/state")
+async def state():
+    if _state_cache[1] and _state_cache[0] > time.time():
+        return Response(_state_cache[1], media_type="application/json", headers=NOCACHE)
+    async with _state_lock:
+        if _state_cache[1] and _state_cache[0] > time.time():
+            return Response(_state_cache[1], media_type="application/json", headers=NOCACHE)
+        now = int(time.time() // 60 * 60)
+        iso = lambda t: datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        body, _ = await trips_body(iso(now - 1800), iso(now + 5400))
+        rt = await realtime_data()
+        cfg = effective_config()
+        out = model.compute(json.loads(body), rt, cfg["crossings"])
+        out.update({"ok": True, "generated": int(time.time() * 1000), "db": bool(rt.get("ok")),
+                    "visitors": cfg["visitors"], "model": cfg["crossings"]})
+        data = json.dumps(out, separators=(",", ":")).encode()
+        _state_cache[0], _state_cache[1] = time.time() + 15, data
+        return Response(data, media_type="application/json", headers=NOCACHE)
 
 # ---------------------------------------------------------------- Modell + Meldungen (öffentlich)
 
