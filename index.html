@@ -416,7 +416,7 @@ const BAND = {lonMin: CROSSINGS[0].lon - 0.0052, lonMax: CROSSINGS[2].lon + 0.00
 const TRACKS = {
   y3: 102, y2: 136, y1: 168,                 // Höhe im Bild (oben = Norden)
   s3: [10.1150, 10.1272], swLen: 0.0006,     // Gleis 3 zwischen den Weichen
-  p23: [10.1166, 10.1189], p1: [10.11635, 10.1183],
+  p23: [10.1165, 10.1187], p1: [10.1165, 10.1187],   // beide Bahnsteige gleich lang gezeichnet
 };
 function trackY(lon, plat) {
   if (plat === "1") return TRACKS.y1;
@@ -439,8 +439,10 @@ function buildBand() {
   for (const c of CROSSINGS) h += `<div class="road${c.id === sel ? " sel" : ""}" style="left:${bx(c.lon)}px"></div>`;
   // Bahnsteige (OSM): Mittelbahnsteig zwischen Gleis 3 und 2, Hausbahnsteig südlich von Gleis 1
   const p1 = [bx(TRACKS.p1[0]), bx(TRACKS.p1[1])], p23 = [bx(TRACKS.p23[0]), bx(TRACKS.p23[1])];
-  h += `<div class="plat" style="left:${p23[0]}px;width:${p23[1] - p23[0]}px;top:${TRACKS.y3 + 12}px;height:${TRACKS.y2 - TRACKS.y3 - 16}px"></div>`;
-  h += `<div class="plat" style="left:${p1[0]}px;width:${p1[1] - p1[0]}px;top:${TRACKS.y1 + 12}px"></div>`;
+  // gleich breit: Mittelbahnsteig mittig zwischen Gleis 3 und 2, Hausbahnsteig im selben Abstand unter Gleis 1
+  const midTop = (TRACKS.y3 + 7 + TRACKS.y2) / 2 - 6;
+  h += `<div class="plat" style="left:${p23[0]}px;width:${p23[1] - p23[0]}px;top:${midTop}px"></div>`;
+  h += `<div class="plat" style="left:${p1[0]}px;width:${p1[1] - p1[0]}px;top:${TRACKS.y1 + 7 + (midTop - TRACKS.y3 - 7)}px"></div>`;
   h += `<div class="platl" style="left:${(p1[0] + p1[1]) / 2}px">BF NERSINGEN</div>`;
   // Gleise: 2 und 1 durchgehend, 3 nur zwischen den Weichen (kurz vor Elchinger bis kurz vor Fichten)
   const track = (x0, x1, y) => `<div class="sleepers" style="left:${x0}px;width:${x1 - x0}px;top:${y}px"></div>` +
