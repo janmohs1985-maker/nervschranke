@@ -314,8 +314,22 @@ async function postJSON(url, body, method = "POST") {
 }
 
 // ---------- Zustand ----------
-const closedAt = (id, d) => (passes[id] || []).find(p => p.closeFrom <= d && p.closeTo >= d);
-const nextAt = (id, d) => (passes[id] || []).find(p => p.closeFrom > d);
+// Kommt der nächste Zug so bald, dass die Schranke weniger als STAY_CLOSED offen wäre, bleibt sie zu:
+// Sperrungen werden dann zu einer zusammengefasst (closeTo = Ende der letzten, trains = Anzahl Züge)
+const STAY_CLOSED = 120000;
+function mergedWindows(id) {
+  const out = [];
+  for (const p of [...(passes[id] || [])].sort((a, b) => a.closeFrom - b.closeFrom)) {
+    const last = out[out.length - 1];
+    if (last && p.closeFrom - last.closeTo < STAY_CLOSED) {
+      if (p.closeTo > last.closeTo) last.closeTo = p.closeTo;
+      last.trains++;
+    } else out.push({...p, trains: 1});
+  }
+  return out;
+}
+const closedAt = (id, d) => mergedWindows(id).find(p => p.closeFrom <= d && p.closeTo >= d);
+const nextAt = (id, d) => mergedWindows(id).find(p => p.closeFrom > d);
 
 function interp(s, d) {
   if (d < s.dep || d > s.arr) return null;
