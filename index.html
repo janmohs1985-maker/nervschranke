@@ -578,7 +578,10 @@ function renderList(now) {
     const zu = p.closeFrom <= now ? `<b style="color:var(--redtxt)">jetzt zu</b>` : p.stops ? `zu ${hm(p.closeFrom)}–${hm(p.closeTo)}` : `zu ~${mins(p.closeTo - p.closeFrom)} Min.`;
     const cls = ["ice", "ic", "nj"].includes(p.kind) ? p.kind : "";
     return `<div class="row"><div class="t">${hm(p.pass)}${d}</div>
-      <span class="bwrap"><span class="badge ${cls}">${esc(p.name)}</span>${p.num ? `<small class="num">${esc(p.num)}</small>` : ""}</span>
+      ${p.isLong || /^\D+ \d{3,}$/.test(p.name)
+        // Fernzüge haben keine Linie → Zugnummer ins Abzeichen („ICE 594“); Regionalzüge: Linie oben, Zugnummer darunter
+        ? `<span class="bwrap"><span class="badge ${cls}">${esc(p.label || p.name)}</span></span>`
+        : `<span class="bwrap"><span class="badge ${cls}">${esc(p.name)}</span>${p.num ? `<small class="num">${esc(p.num)}</small>` : ""}</span>`}
       <div class="d"><b>${p.westbound ? "→ Ulm" : "→ Augsburg"}</b><span>${p.stops ? "hält in Nersingen" : "fährt durch"} · <span class="src ${p.src}">${SRC[p.src] || ""}</span></span></div>
       <div class="z">${zu}</div></div>`;
   }).join("");
