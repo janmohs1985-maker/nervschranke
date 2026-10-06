@@ -183,6 +183,8 @@ h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-top:4px;line-heig
 .row .d{flex:1;min-width:0}
 .row .d b{display:block;font-size:14px;font-weight:600}
 .row .d span{font-size:12px;color:var(--muted)}
+.row .bwrap{flex:none;display:flex;flex-direction:column;align-items:center;gap:2px}
+.row .num{font-family:var(--mono);font-size:10px;color:var(--dim)}
 .row .src{font-size:11px;font-weight:600}
 .row .src.db{color:var(--green)}
 .row .src.rt{color:#7AA2FF}
@@ -529,7 +531,8 @@ function renderBand(now) {
     }
     el.classList.toggle("halt", t.halt);
     // hält am Bahnsteig: wann geht es weiter?
-    const tag = t.halt && t.until ? `${t.name} · ab in ${mmss(t.until - now)}` : t.halt ? `${t.name} · hält` : t.name;
+    const nm = t.label || t.name;
+    const tag = t.halt && t.until ? `${nm} · ab in ${mmss(t.until - now)}` : t.halt ? `${nm} · hält` : nm;
     if (el._tag.textContent !== tag) el._tag.textContent = tag;
     // auf seinem Gleis (Front zeigt in Fahrtrichtung); Räder stehen auf der unteren Schiene
     const top = trackY(t.c[1], t.plat) + 6 - sp.h;
@@ -575,7 +578,7 @@ function renderList(now) {
     const zu = p.closeFrom <= now ? `<b style="color:var(--redtxt)">jetzt zu</b>` : p.stops ? `zu ${hm(p.closeFrom)}–${hm(p.closeTo)}` : `zu ~${mins(p.closeTo - p.closeFrom)} Min.`;
     const cls = ["ice", "ic", "nj"].includes(p.kind) ? p.kind : "";
     return `<div class="row"><div class="t">${hm(p.pass)}${d}</div>
-      <span class="badge ${cls}">${esc(p.name)}</span>
+      <span class="bwrap"><span class="badge ${cls}">${esc(p.name)}</span>${p.num ? `<small class="num">${esc(p.num)}</small>` : ""}</span>
       <div class="d"><b>${p.westbound ? "→ Ulm" : "→ Augsburg"}</b><span>${p.stops ? "hält in Nersingen" : "fährt durch"} · <span class="src ${p.src}">${SRC[p.src] || ""}</span></span></div>
       <div class="z">${zu}</div></div>`;
   }).join("");
@@ -623,7 +626,7 @@ function renderMap(now) {
   for (const t of live) {
     seen.add(t.id);
     const ms = MAPSTYLE[t.kind] || MAPSTYLE.rb;
-    const label = esc(t.name) + (t.halt ? " · hält" : "");
+    const label = esc(t.label || t.name) + (t.halt ? " · hält" : "");
     const key = t.kind + "|" + label + "|" + Math.round(t.h / 4);
     let m = tMarkers.get(t.id);
     if (!m) { m = L.marker(t.c, {interactive: false, keyboard: false}).addTo(map); tMarkers.set(t.id, m); }

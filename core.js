@@ -131,6 +131,9 @@ function parse(raw) {
     const coords = decodePolyline(s.polyline);
     if (coords.length < 2) continue;
     const name = trainName(s.trips?.[0]?.routeShortName, s.mode);
+    // Zugnummer für die Beschriftung, z. B. „ICE 598“, „RE 57049“ (Linie RE 9)
+    const num = trainNumber(s.trips?.[0]?.routeShortName);
+    const label = num ? `${name.split(" ")[0]} ${num}` : name;
     const kind = kindOf(name, s.mode);
     const isLong = CFG.longModes.has(s.mode);
     const trip = s.trips?.[0]?.tripId || Math.random().toString(36);
@@ -176,7 +179,7 @@ function parse(raw) {
       const after = m[kase + "_after"];
       // Woher kommt die Zeit? db = DB Timetables, rt = Echtzeit aus Transitous, plan = nur Fahrplan
       const src = s._db ? "db" : s.realTime ? "rt" : "plan";
-      P[c.id].push({id: trip, name, kind, isLong, westbound, stops, fromHere, case: kase, pass, delay, src,
+      P[c.id].push({id: trip, name, num, label, kind, isLong, westbound, stops, fromHere, case: kase, pass, delay, src,
         closeFrom: new Date(+pass - before * 1000), closeTo: new Date(+pass + after * 1000)});
     }
     if (nearAny <= CFG.mapDistance) {
@@ -186,8 +189,10 @@ function parse(raw) {
       const plat = s._pl || (westbound ? (stops && !isLong ? "3" : "2") : "1");
       const mode = fromHere ? "ab" : toHere ? "an" : null;
       // derselbe Zug aus zwei Datenquellen (z. B. „DRF“ und „WB 962“) nur einmal zeichnen
-      const twin = S.some(x => x.westbound === westbound && Math.abs(x.dep - dep) < 60000 && Math.abs(x.arr - arr) < 60000);
-      if (!twin && !seenSeg.has(key)) { seenSeg.add(key); S.push({id: key, trip, name, kind, westbound, dep, arr, coords, cum, plat, mode}); }
+      // oder gleiche Zugnummer in gleicher Richtung kurz nacheinander (Doppelgänger mit anderem Abschnitt)
+      const twin = S.some(x => x.westbound === westbound && ((Math.abs(x.dep - dep) < 60000 && Math.abs(x.arr - arr) < 60000) ||
+                                                          (num && x.num === num && x.dep < arr && dep < x.arr)));
+      if (!twin && !seenSeg.has(key)) { seenSeg.add(key); S.push({id: key, trip, name, num, label, kind, westbound, dep, arr, coords, cum, plat, mode}); }
     }
   }
   // Hinter dem Bahnhof geht die Schranke frühestens zu, wenn derselbe Zug an der Schranke davor
@@ -302,9 +307,9 @@ function liveTrains(d) {
   const out = [], moving = new Set();
   // je Zug nur ein Abschnitt gleichzeitig (der frühere), damit er nie doppelt erscheint
   for (const s of [...segments].sort((a, b) => a.dep - b.dep)) {
-    if (moving.has(s.trip)) continue;
+    if (moving.has(s.trip) || (s.num && moving.has("n" + s.num))) continue;
     const p = interp(s, d);
-    if (p) { out.push({...s, ...p, halt: false}); moving.add(s.trip); }
+    if (p) { out.push({...s, ...p, halt: false}); moving.add(s.trip); if (s.num) moving.add("n" + s.num); }
   }
   for (const s of segments) {
     if (s.arr > d || moving.has(s.trip)) continue;
