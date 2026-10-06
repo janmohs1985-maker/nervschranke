@@ -18,6 +18,7 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).parent
 DATA = Path(os.environ.get("DATA_DIR", "/data"))
@@ -132,6 +133,19 @@ def index():
     return FileResponse(ROOT / "index.html", headers=NOCACHE)
 
 
+@app.get("/impressum")
+def impressum():
+    return FileResponse(ROOT / "impressum.html", headers=NOCACHE)
+
+
+@app.get("/datenschutz")
+def datenschutz():
+    return FileResponse(ROOT / "datenschutz.html", headers=NOCACHE)
+
+
+app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+
+
 @app.get("/core.js")
 def core_js():
     return FileResponse(ROOT / "core.js", media_type="text/javascript", headers=NOCACHE)
@@ -173,7 +187,8 @@ def admin_logout():
 
 _trips_cache = {}
 _trips_lock = asyncio.Lock()
-_http = httpx.AsyncClient(timeout=25, headers={"User-Agent": "nervschranke.de (Schranke Nersingen)"})
+# Transitous möchte Name, Version und Kontakt im User-Agent
+_http = httpx.AsyncClient(timeout=25, headers={"User-Agent": "Nervschranke/1.1 (+https://nervschranke.de; jan@mohs.es)"})
 
 
 @app.get("/api/trips")
@@ -234,6 +249,8 @@ async def report(request: Request):
         raise HTTPException(429, "Du hast gerade schon gemeldet.")
     db("INSERT INTO reports(ts, crossing, state, source, device, iphash, snapshot) VALUES(?,?,?,?,?,?,?)",
        (time.time(), crossing, state, "visitor", device, ip, clean_snapshot(body.get("snapshot"))))
+    # Besucher-Meldungen höchstens 12 Monate aufheben (so steht es in der Datenschutzerklärung)
+    db("DELETE FROM reports WHERE source='visitor' AND ts < ?", (time.time() - 365 * 86400,))
     return live()
 
 

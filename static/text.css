@@ -1,0 +1,17 @@
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#0C0D12;color:#F2F3F7}
+body{font-family:'Space Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.6;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:720px;margin:0 auto;padding:28px 16px 48px}
+h1{font-size:30px;letter-spacing:-.02em;margin:14px 0 18px}
+h2{font-size:17px;margin:26px 0 6px}
+p,li{color:#C9CBD3;font-size:15px}
+p + p{margin-top:10px}
+ul{margin:6px 0 0 20px}
+li + li{margin-top:4px}
+a{color:#FF8A3D}
+a:hover{color:#FFB37A}
+b{color:#F2F3F7}
+.back{display:inline-block;font-size:14px;color:#9A9DAB;text-decoration:none}
+.back:hover{color:#F2F3F7}
+.foot{margin-top:32px;font-size:14px}
+.stand{color:#6E7180;font-size:13px;margin-top:6px}

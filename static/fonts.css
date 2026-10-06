@@ -1,0 +1,3 @@
+/* Schriften liegen auf dem eigenen Server (keine Verbindung zu Google). Lizenz: SIL Open Font License 1.1 */
+@font-face{font-family:'Space Grotesk';font-style:normal;font-display:swap;font-weight:300 700;src:url(/static/fonts/space-grotesk.woff2) format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-display:swap;font-weight:100 800;src:url(/static/fonts/jetbrains-mono.woff2) format('woff2')}

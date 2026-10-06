@@ -11,7 +11,9 @@ const CFG = {
   longModes: new Set(["HIGHSPEED_RAIL","LONG_DISTANCE","NIGHT_RAIL"]),
   station: "Nersingen",
 };
-const SOURCES = ["/api/trips", "https://api.transitous.org/api/v1/map/trips"];
+// Zugdaten nur über den eigenen Server (Zwischenspeicher, keine Besucherdaten an Transitous).
+// Direkt bei Transitous nur beim Ausprobieren als lokale Datei.
+const SOURCES = location.protocol === "file:" ? ["https://api.transitous.org/api/v1/map/trips"] : ["/api/trips"];
 
 let passes = {}, segments = [], loaded = null, failed = false;
 let stationLon = 10.1196;
