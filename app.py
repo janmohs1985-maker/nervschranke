@@ -78,6 +78,8 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 CREATE INDEX IF NOT EXISTS reports_ts ON reports(ts);
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+-- gesperrte Besucher (Geräte-Kennung oder Anschluss-Code): ihre Meldungen werden still angenommen, zählen aber nicht
+CREATE TABLE IF NOT EXISTS blocked (k TEXT PRIMARY KEY, ts REAL NOT NULL);
 -- Besucherzählung ohne Cookies: vhash = täglich wechselnder Code aus IP + Browser, wird nach 2 Tagen gelöscht
 CREATE TABLE IF NOT EXISTS visits (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -538,8 +540,11 @@ async def report(request: Request):
         same_ip = db("SELECT COUNT(*) AS n FROM reports WHERE source='visitor' AND exact=0 AND ts > ? AND iphash=?", (since, ip), one=True)["n"]
         if same_dev or same_ip >= 5 or (not device and same_ip >= 1):
             raise HTTPException(429, "Du hast gerade schon gemeldet.")
-    db("INSERT INTO reports(ts, crossing, state, source, device, iphash, snapshot, exact) VALUES(?,?,?,?,?,?,?,?)",
-       (now, crossing, state, "visitor", device, ip, clean_snapshot(body.get("snapshot")), 1 if exact else 0))
+    # gesperrt? Dann still annehmen (der Störer merkt nichts), aber nie zählen lassen.
+    # Geräte bleiben gesperrt, Anschlüsse nur 24 h (Handy-Netze teilen sich IP-Adressen)
+    blocked = db("SELECT 1 FROM blocked WHERE (k=? AND k != '') OR (k=? AND ts > ?)", ("d:" + device if device else "", "i:" + ip, now - 86400), one=True)
+    db("INSERT INTO reports(ts, crossing, state, source, device, iphash, snapshot, exact, ignored) VALUES(?,?,?,?,?,?,?,?,?)",
+       (now, crossing, state, "visitor", device, ip, clean_snapshot(body.get("snapshot")), 1 if exact else 0, 1 if blocked else 0))
     if exact:
         learn_invalidate()
     # Besucher-Meldungen höchstens 12 Monate aufheben (so steht es in der Datenschutzerklärung)
@@ -547,14 +552,71 @@ async def report(request: Request):
     return live()
 
 
+STAY_CLOSED = 120   # wie auf der Seite: kürzere Lücken zwischen zwei Zügen = bleibt zu
+_parsed_state = [None, None]
+
+
+def model_view(crossing, ts):
+    """Was sagt die Vorhersage für diesen Moment? ("zu"/"auf", Zug in ±10 Min.?) – None, wenn unbekannt."""
+    if _parsed_state[0] != _state_cache[1]:
+        try:
+            _parsed_state[:] = [_state_cache[1], json.loads(_state_cache[1]) if _state_cache[1] else None]
+        except ValueError:
+            _parsed_state[:] = [_state_cache[1], None]
+    st = _parsed_state[1]
+    if not st:
+        return None
+    t = ts * 1000
+    wins = []
+    for p in sorted(st["passes"].get(crossing, []), key=lambda p: p["closeFrom"]):
+        if wins and p["closeFrom"] - wins[-1][1] < STAY_CLOSED * 1000:
+            wins[-1][1] = max(wins[-1][1], p["closeTo"])
+        else:
+            wins.append([p["closeFrom"], p["closeTo"]])
+    lo = min((p["pass"] for p in st["passes"].get(crossing, [])), default=None)
+    if lo is None or t < lo - 1800_000:
+        return None   # so alte Zeiten deckt der zwischengespeicherte Stand nicht ab
+    closed = any(a <= t <= b for a, b in wins)
+    near = any(a - 600_000 <= t <= b + 600_000 for a, b in wins)
+    return {"closed": closed, "near": near}
+
+
+def contradicts(r):
+    """Widerspricht die Besucher-Meldung der Vorhersage deutlich? (auf mitten in einer Sperrung, zu ohne Zug weit und breit)"""
+    m = model_view(r["crossing"], r["ts"])
+    if m is None:
+        try:
+            s = json.loads(r["snapshot"]) if r["snapshot"] else None
+        except ValueError:
+            s = None
+        if r["state"] == "auf":
+            return bool(s and s.get("closeFrom", 0) <= r["ts"] * 1000 <= s.get("closeTo", 0))
+        return s is None
+    return (r["state"] == "auf" and m["closed"]) or (r["state"] == "zu" and not m["near"])
+
+
 def confirmed_ids(rows, cfg):
-    """Besucher-Meldungen zählen erst, wenn genug verschiedene Geräte dasselbe melden."""
+    """Besucher-Meldungen zählen erst, wenn genug verschiedene Geräte dasselbe melden.
+    Gegen Sabotage: Widerspricht die Meldung der Vorhersage, braucht es eine Bestätigung mehr – und zwar von
+    verschiedenen Anschlüssen (Handy + Laptop im selben WLAN zählen als einer). Hat Jan an dem Übergang in den
+    5 Minuten davor gemessen, zählen Besucher-Meldungen gegen seine Messung gar nicht."""
     ok = set()
-    vis = [r for r in rows if r["source"] == "visitor"]
+    vis = [r for r in rows if r["source"] == "visitor" and not r["ignored"] and not r["exact"] and r["state"] in ("zu", "auf")]
+    if not vis:
+        return ok
+    adm = db("SELECT ts, crossing, state FROM reports WHERE source='admin' AND ignored=0 AND ts BETWEEN ? AND ? ORDER BY ts",
+             (min(r["ts"] for r in vis) - 300, max(r["ts"] for r in vis)))
     for r in vis:
-        same = {x["device"] or x["iphash"] for x in vis if x["crossing"] == r["crossing"] and x["state"] == r["state"]
-                and abs(x["ts"] - r["ts"]) <= cfg["window"]}
-        if len(same) >= cfg["confirm"]:
+        jan = [a for a in adm if a["crossing"] == r["crossing"] and r["ts"] - 300 <= a["ts"] <= r["ts"]]
+        if jan:
+            last = "zu" if jan[-1]["state"] in ("zu", "zug") else "auf"
+            if last != r["state"]:
+                continue
+        others = [x for x in vis if x["crossing"] == r["crossing"] and x["state"] == r["state"] and abs(x["ts"] - r["ts"]) <= cfg["window"]]
+        if contradicts(r):
+            if len({x["iphash"] for x in others}) >= cfg["confirm"] + 1:
+                ok.add(r["id"])
+        elif len({x["device"] or x["iphash"] for x in others}) >= cfg["confirm"]:
             ok.add(r["id"])
     return ok
 
@@ -625,6 +687,22 @@ async def admin_ignore(rid: int, request: Request):
     need_admin(request)
     body = await request.json()
     db("UPDATE reports SET ignored=? WHERE id=?", (1 if body.get("ignored") else 0, rid))
+    learn_invalidate()
+    return {"ok": True}
+
+
+@app.post("/api/admin/report/{rid}/block")
+def admin_block(rid: int, request: Request):
+    """Besucher hinter dieser Meldung sperren: Gerät dauerhaft, Anschluss 24 h; seine Meldungen der letzten 24 h zählen nicht mehr."""
+    need_admin(request)
+    r = db("SELECT * FROM reports WHERE id=? AND source='visitor'", (rid,), one=True)
+    if not r:
+        raise HTTPException(404, "nicht gefunden")
+    now = time.time()
+    for k in (["d:" + r["device"]] if r["device"] else []) + (["i:" + r["iphash"]] if r["iphash"] else []):
+        db("INSERT OR REPLACE INTO blocked(k, ts) VALUES(?, ?)", (k, now))
+    db("UPDATE reports SET ignored=1 WHERE source='visitor' AND ts > ? AND ((device=? AND device != '') OR iphash=?)",
+       (now - 86400, r["device"] or "", r["iphash"] or ""))
     learn_invalidate()
     return {"ok": True}
 

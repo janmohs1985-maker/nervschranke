@@ -409,7 +409,7 @@ function renderAnalysis() {
       (r.dev != null ? ` · ${r.exact ? "Modell " : ""}${resultTxt(r)}` : "") + (r.why ? ` · ${r.why}` : "");
     return `<div class="row"><span class="dot" style="background:${dotc}"></span>
       <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${stateTxt(r)} · ${dayHms(r.ts)}</div><div class="muted" style="font-size:12px">${meta}</div>
-      <div style="display:flex;gap:12px;margin-top:4px"><button class="link" data-ign="${r.id}" data-v="${r.ignored ? 0 : 1}">${r.ignored ? "wieder zählen" : "ignorieren"}</button><button class="link" data-del="${r.id}">löschen</button></div></div>
+      <div style="display:flex;gap:12px;margin-top:4px"><button class="link" data-ign="${r.id}" data-v="${r.ignored ? 0 : 1}">${r.ignored ? "wieder zählen" : "ignorieren"}</button><button class="link" data-del="${r.id}">löschen</button>${r.source === "visitor" ? `<button class="link" data-blk="${r.id}" style="color:var(--redtxt)">Gerät sperren</button>` : ""}</div></div>
       <span class="tag" style="color:${tag[1]};background:${tag[2]}">${tag[0]}</span></div>`;
   }).join("") : `<div class="row muted">noch keine Meldungen</div>`;
 }
@@ -432,9 +432,10 @@ $("saveParams").addEventListener("click", () => {
 $("saveLearn").addEventListener("click", () => saveConfig({learn: {auto: $("lAuto").checked, halflife: +$("lHalf").value, prior: +$("lPrior").value, visitors: $("lVis").checked, visitorWeight: +$("lVisW").value}}, "Gespeichert"));
 $("saveVis").addEventListener("click", () => saveConfig({visitors: {confirm: +$("vConfirm").value, window: +$("vWindow").value, rate: +$("vRate").value, live: $("vLive").checked}}, "Gespeichert"));
 $("reports").addEventListener("click", async e => {
-  const ign = e.target.closest("[data-ign]"), del = e.target.closest("[data-del]");
+  const ign = e.target.closest("[data-ign]"), del = e.target.closest("[data-del]"), blk = e.target.closest("[data-blk]");
   if (ign) await postJSON(`/api/admin/report/${ign.dataset.ign}/ignore`, {ignored: ign.dataset.v === "1"});
   else if (del) { if (!confirm("Meldung löschen?")) return; await fetch("/api/admin/report/" + del.dataset.del, {method: "DELETE"}); }
+  else if (blk) { if (!confirm("Diesen Besucher sperren? Seine Meldungen zählen dann nicht mehr (er merkt davon nichts).")) return; await postJSON(`/api/admin/report/${blk.dataset.blk}/block`, {}); toast("Gesperrt"); }
   else return;
   loadAnalysis();
 });
