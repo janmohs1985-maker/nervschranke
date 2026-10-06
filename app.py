@@ -13,7 +13,10 @@ import sqlite3
 import statistics
 import threading
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -69,6 +72,18 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 CREATE INDEX IF NOT EXISTS reports_ts ON reports(ts);
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+-- Besucherzählung ohne Cookies: vhash = täglich wechselnder Code aus IP + Browser, wird nach 2 Tagen gelöscht
+CREATE TABLE IF NOT EXISTS visits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts REAL NOT NULL,
+  day TEXT NOT NULL,
+  hour INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  vhash TEXT,
+  mobile INTEGER NOT NULL DEFAULT 0,
+  ref TEXT
+);
+CREATE INDEX IF NOT EXISTS visits_day ON visits(day);
 """)
 _db.commit()
 
@@ -128,8 +143,60 @@ app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 NOCACHE = {"Cache-Control": "no-cache"}
 
 
+# ---------------------------------------------------------------- Besucherzählung
+
+TZ = ZoneInfo("Europe/Berlin")
+BOTS = ("bot", "crawl", "spider", "slurp", "curl", "wget", "python", "httpx", "go-http", "headless", "monitor")
+PREVIEWS = ("whatsapp", "telegrambot", "facebookexternalhit", "twitterbot", "signal", "discordbot", "slackbot",
+            "linkedinbot", "skypeuripreview", "applebot", "iframely", "embedly", "mastodon")
+_active = {}          # vhash → zuletzt gesehen (nur im Speicher, für „gerade auf der Seite“)
+_last_purge = [0.0]
+
+
+def visitor_hash(request: Request, day: str):
+    ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() or (request.client.host if request.client else "")
+    ua = request.headers.get("user-agent", "")
+    return hmac.new(SECRET, f"{day}|{ip}|{ua}".encode(), hashlib.sha256).hexdigest()[:16]
+
+
+def record_visit(request: Request):
+    if is_admin(request):
+        return
+    ua = (request.headers.get("user-agent") or "").lower()
+    kind = "preview" if any(p in ua for p in PREVIEWS) else "bot" if (not ua or any(b in ua for b in BOTS)) else "view"
+    if kind == "bot":
+        return
+    now = datetime.now(TZ)
+    day = now.strftime("%Y-%m-%d")
+    ref = None
+    r = request.headers.get("referer") or ""
+    if r:
+        host = urlparse(r).hostname or ""
+        if host and not host.endswith("nervschranke.de") and not host.endswith("mohs.es"):
+            ref = host.removeprefix("www.")[:60]
+    mobile = 1 if any(m in ua for m in ("iphone", "android", "mobile")) else 0
+    db("INSERT INTO visits(ts, day, hour, kind, vhash, mobile, ref) VALUES(?,?,?,?,?,?,?)",
+       (time.time(), day, now.hour, kind, visitor_hash(request, day) if kind == "view" else None, mobile, ref))
+    if time.time() - _last_purge[0] > 3600:
+        _last_purge[0] = time.time()
+        purge_visitor_codes()
+
+
+def purge_visitor_codes():
+    """Tagescodes älter als gestern löschen – vorher die Zahl verschiedener Besucher je Tag merken."""
+    keep_from = (datetime.now(TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
+    for row in db("SELECT day, COUNT(DISTINCT vhash) AS n FROM visits WHERE vhash IS NOT NULL AND day < ? GROUP BY day", (keep_from,)):
+        db("INSERT INTO kv(k, v) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", ("uniq:" + row["day"], str(row["n"])))
+    db("UPDATE visits SET vhash=NULL WHERE vhash IS NOT NULL AND day < ?", (keep_from,))
+    db("DELETE FROM visits WHERE ts < ?", (time.time() - 400 * 86400,))
+
+
 @app.get("/")
-def index():
+def index(request: Request):
+    try:
+        record_visit(request)
+    except Exception:
+        pass  # Zählen darf die Seite nie stören
     return FileResponse(ROOT / "index.html", headers=NOCACHE)
 
 
@@ -272,10 +339,15 @@ def confirmed_ids(rows, cfg):
 
 
 @app.get("/api/live")
-def live():
+def live(request: Request = None):
     """Meldungen der letzten 3 Minuten je Übergang."""
     cfg = get_config()["visitors"]
     now = time.time()
+    # die Seite fragt alle 15 s hier nach → daraus „gerade auf der Seite“ (nur im Speicher)
+    if request is not None and not is_admin(request):
+        _active[visitor_hash(request, datetime.now(TZ).strftime("%Y-%m-%d"))] = now
+        for k in [k for k, v in _active.items() if v < now - 60]:
+            _active.pop(k, None)
     rows = db("SELECT * FROM reports WHERE ts > ? AND ignored=0 AND state IN ('zu','auf') ORDER BY ts", (now - 180,))
     conf = confirmed_ids(rows, cfg)
     out = {}
@@ -413,6 +485,53 @@ def admin_analysis(request: Request, days: float = 60):
             "counts": {"admin": n_admin, "visitor": n_vis, "visitorConfirmed": n_vis_ok},
         }
     return {"crossings": res, "config": cfg}
+
+
+@app.get("/api/admin/visits")
+def admin_visits(request: Request, days: int = 30):
+    need_admin(request)
+    days = max(1, min(days, 365))
+    purge_visitor_codes()
+    today = datetime.now(TZ).date()
+    day_list = [(today - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days - 1, -1, -1)]
+    first = day_list[0]
+    rows = db("SELECT day, kind, COUNT(*) AS n, COUNT(DISTINCT vhash) AS u, SUM(mobile) AS m FROM visits WHERE day >= ? GROUP BY day, kind", (first,))
+    stored = {r["k"][5:]: int(r["v"]) for r in db("SELECT k, v FROM kv WHERE k >= ? AND k LIKE 'uniq:%'", ("uniq:" + first,))}
+    per = {d: {"day": d, "views": 0, "uniques": 0, "previews": 0, "reports": 0} for d in day_list}
+    mobile = views_total = 0
+    for r in rows:
+        p = per.get(r["day"])
+        if not p:
+            continue
+        if r["kind"] == "view":
+            p["views"] = r["n"]
+            p["uniques"] = r["u"] or stored.get(r["day"], 0)
+            mobile += r["m"] or 0
+            views_total += r["n"]
+        elif r["kind"] == "preview":
+            p["previews"] = r["n"]
+    for r in db("SELECT ts FROM reports WHERE ts > ?", (time.time() - (days + 1) * 86400,)):
+        d = datetime.fromtimestamp(r["ts"], TZ).strftime("%Y-%m-%d")
+        if d in per:
+            per[d]["reports"] += 1
+    hours = [0] * 24
+    for r in db("SELECT hour, COUNT(*) AS n FROM visits WHERE kind='view' AND day >= ? GROUP BY hour", (first,)):
+        hours[r["hour"]] = r["n"]
+    refs = [{"ref": r["ref"], "n": r["n"]} for r in
+            db("SELECT ref, COUNT(*) AS n FROM visits WHERE kind='view' AND ref IS NOT NULL AND day >= ? GROUP BY ref ORDER BY n DESC LIMIT 8", (first,))]
+    series = [per[d] for d in day_list]
+
+    def total(n, key):
+        return sum(s[key] for s in series[-n:])
+    return {
+        "active": sum(1 for v in _active.values() if v > time.time() - 60),
+        "today": series[-1],
+        "yesterday": series[-2] if len(series) > 1 else None,
+        "week": {"views": total(7, "views"), "uniques": total(7, "uniques"), "previews": total(7, "previews")},
+        "month": {"views": total(30, "views"), "uniques": total(30, "uniques"), "previews": total(30, "previews")},
+        "mobileShare": (mobile / views_total) if views_total else None,
+        "days": series, "hours": hours, "refs": refs,
+    }
 
 
 @app.put("/api/admin/config")

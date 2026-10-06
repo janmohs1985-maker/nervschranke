@@ -85,6 +85,14 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
 .set input[type=number]{width:80px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:var(--bg);font-family:var(--mono)}
 .mini{font-size:12px;color:var(--muted);padding:0 16px 14px}
 .link{color:var(--muted);font-size:12px;text-decoration:underline}
+.vbars{display:flex;align-items:flex-end;gap:3px;height:150px;padding:6px 16px 0}
+.vbars .b{flex:1;min-width:0;position:relative;height:100%;display:flex;align-items:flex-end}
+.vbars .b i{position:absolute;left:0;right:0;bottom:0;border-radius:3px 3px 0 0;background:rgba(255,138,61,.75)}
+.vbars .b em{position:absolute;left:25%;right:25%;bottom:0;border-radius:2px 2px 0 0;background:var(--blue)}
+.vbars .b:hover i{background:var(--orange)}
+.vbars.hours .b i{background:rgba(61,220,132,.7)}
+.vaxis{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);padding:6px 16px 14px;font-family:var(--mono)}
+.live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:6px;animation:breatheG 2s infinite}
 </style>
 </head>
 <body>
@@ -97,8 +105,8 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
     <div class="links"><a href="/">zur Seite</a><a href="/admin/logout">abmelden</a></div>
   </header>
 
-  <div class="seg" id="tabs" style="grid-template-columns:repeat(2,minmax(0,1fr))">
-    <button data-tab="messen" class="on">Messen</button><button data-tab="auswertung">Auswertung</button>
+  <div class="seg" id="tabs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+    <button data-tab="messen" class="on">Messen</button><button data-tab="auswertung">Auswertung</button><button data-tab="besucher">Besucher</button>
   </div>
   <div class="seg" id="xsel" style="grid-template-columns:repeat(3,minmax(0,1fr))"></div>
 
@@ -115,6 +123,34 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
     </div>
     <div class="h">Heute gemessen</div>
     <div class="card" id="today"><div class="row muted">noch nichts</div></div>
+  </section>
+
+  <!-- Besucher -->
+  <section id="besucher" hidden style="flex-direction:column;gap:14px">
+    <div class="kpis" id="vKpis"></div>
+    <div class="card">
+      <div class="ct"><b>Aufrufe pro Tag</b>
+        <div style="display:flex;gap:12px;font-size:12px" class="muted"><span><span class="dot" style="display:inline-block;background:var(--orange)"></span> Aufrufe</span><span><span class="dot" style="display:inline-block;background:var(--blue)"></span> Besucher</span></div></div>
+      <div class="vbars" id="vDays"></div>
+      <div class="vaxis" id="vDaysAxis"></div>
+    </div>
+    <div class="cols">
+      <div class="main">
+        <div class="card">
+          <div class="ct"><b>Wann schauen die Leute?</b><span class="muted" style="font-size:12px">Uhrzeit, letzte 30 Tage</span></div>
+          <div class="vbars hours" id="vHours"></div>
+          <div class="vaxis"><span>0</span><span>6</span><span>12</span><span>18</span><span>23 Uhr</span></div>
+        </div>
+      </div>
+      <div class="side">
+        <div class="card">
+          <div class="ct"><b>Woher</b><span class="muted" style="font-size:12px">verlinkende Seiten</span></div>
+          <div id="vRefs"></div>
+          <div class="mini">Aufrufe aus WhatsApp & Co. kommen meist ohne Absender und zählen als „direkt“. Link-Vorschauen zeigen, wie oft der Link geteilt wurde.</div>
+        </div>
+      </div>
+    </div>
+    <div class="mini" style="padding:0 4px">Gezählt ohne Cookies und ohne gespeicherte IP-Adressen. „Besucher“ = verschiedene Geräte pro Tag. Deine eigenen Aufrufe (angemeldet) zählen nicht mit.</div>
   </section>
 
   <!-- Auswertung -->
@@ -181,10 +217,40 @@ function renderSel() {
   $("tabs").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
   $("messen").style.display = tab === "messen" ? "flex" : "none";
   $("auswertung").hidden = tab !== "auswertung"; $("auswertung").style.display = tab === "auswertung" ? "flex" : "none";
-  $("title").textContent = tab === "messen" ? "Messen an der Schranke" : "Auswertung & Modell";
+  $("besucher").hidden = tab !== "besucher"; $("besucher").style.display = tab === "besucher" ? "flex" : "none";
+  $("xsel").style.display = tab === "besucher" ? "none" : "grid";
+  $("title").textContent = tab === "messen" ? "Messen an der Schranke" : tab === "auswertung" ? "Auswertung & Modell" : "Besucher & Nachfrage";
 }
+
+// ---------- Besucher ----------
+async function loadVisits() {
+  const r = await fetch("/api/admin/visits?days=30", {cache: "no-store"});
+  if (r.status === 401) { location.reload(); return; }
+  const v = await r.json();
+  const dayName = d => new Date(d + "T12:00:00").toLocaleDateString("de-DE", {weekday: "short", day: "numeric", month: "numeric"});
+  const pct = v.mobileShare == null ? "–" : Math.round(v.mobileShare * 100) + " %";
+  $("vKpis").innerHTML = `
+    <div class="card kpi"><div class="muted" style="font-size:12px"><span class="live-dot"></span>gerade auf der Seite</div><div class="v" style="color:var(--green)">${v.active}</div><div class="n">letzte Minute</div></div>
+    <div class="card kpi"><div class="muted" style="font-size:12px">heute</div><div class="v">${v.today.uniques}</div><div class="n">Besucher · ${v.today.views} Aufrufe${v.yesterday ? ` · gestern ${v.yesterday.uniques}` : ""}</div></div>
+    <div class="card kpi"><div class="muted" style="font-size:12px">7 Tage</div><div class="v">${v.week.uniques}</div><div class="n">Besucher · ${v.week.views} Aufrufe</div></div>
+    <div class="card kpi"><div class="muted" style="font-size:12px">30 Tage</div><div class="v">${v.month.uniques}</div><div class="n">Besucher · ${v.month.views} Aufrufe · ${pct} Handy</div></div>
+    <div class="card kpi"><div class="muted" style="font-size:12px">geteilt (Link-Vorschau)</div><div class="v" style="color:var(--orange)">${v.month.previews}</div><div class="n">30 Tage · heute ${v.today.previews}</div></div>`;
+  const maxD = Math.max(1, ...v.days.map(d => d.views));
+  $("vDays").innerHTML = v.days.map(d =>
+    `<div class="b" title="${dayName(d.day)}: ${d.uniques} Besucher, ${d.views} Aufrufe, ${d.reports} Meldungen, ${d.previews}× geteilt">
+      <i style="height:${d.views / maxD * 100}%"></i><em style="height:${d.uniques / maxD * 100}%"></em></div>`).join("");
+  const step = Math.ceil(v.days.length / 5);
+  $("vDaysAxis").innerHTML = v.days.filter((d, i) => i % step === 0 || i === v.days.length - 1).map(d => `<span>${dayName(d.day)}</span>`).join("");
+  const maxH = Math.max(1, ...v.hours);
+  $("vHours").innerHTML = v.hours.map((n, h) => `<div class="b" title="${h}–${h + 1} Uhr: ${n} Aufrufe"><i style="height:${n / maxH * 100}%"></i></div>`).join("");
+  $("vRefs").innerHTML = v.refs.length
+    ? v.refs.map(r => `<div class="row"><span style="flex:1;font-size:14px">${esc(r.ref)}</span><span class="mono" style="font-weight:700">${r.n}</span></div>`).join("")
+    : `<div class="row muted">noch keine verlinkenden Seiten</div>`;
+}
+setInterval(() => { if (tab === "besucher" && !document.hidden) loadVisits(); }, 30000);
+
 $("xsel").addEventListener("click", e => { const b = e.target.closest("[data-x]"); if (!b) return; xid = b.dataset.x; try { localStorage.setItem("nsAdminX", xid); } catch (e2) {} renderSel(); renderMessen(); renderAnalysis(); });
-$("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (!b) return; tab = b.dataset.tab; renderSel(); if (tab === "auswertung") loadAnalysis(); });
+$("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (!b) return; tab = b.dataset.tab; renderSel(); if (tab === "auswertung") loadAnalysis(); if (tab === "besucher") loadVisits(); });
 
 // ---------- Messen ----------
 function mState() { try { return JSON.parse(localStorage.getItem("nsMess_" + xid) || "{}"); } catch (e) { return {}; } }
