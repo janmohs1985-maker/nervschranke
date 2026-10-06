@@ -172,10 +172,10 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
           <div class="ct"><b id="paramTitle">Schließzeiten</b>
             <div style="display:flex;gap:8px"><button class="sec" id="allSug" type="button">Alle Vorschläge eintragen</button><button class="pri" id="saveParams" type="button">Speichern</button></div></div>
           <div class="tbl"><table>
-            <thead><tr><th>FALL</th><th>MODELL (s)</th><th>GEMESSEN</th><th>STREUUNG</th><th></th></tr></thead>
+            <thead><tr><th>FALL</th><th>MANUELL (s)</th><th>GEMESSEN</th><th>STREUUNG</th><th>GELERNT</th><th>GILT</th><th></th></tr></thead>
             <tbody id="params"></tbody>
           </table></div>
-          <div class="mini">Vorschlag = Median aus deinen Messungen und bestätigten Besucher-Meldungen (ab 3 Werten). „Speichern“ gilt sofort für alle Besucher.</div>
+          <div class="mini">Gelernt = aus deinen genauen Messungen, neuere zählen mehr; die Prozent zeigen, wie sicher der Wert ist. „Gilt“ = was die Seite gerade benutzt (bei „Automatisch lernen“ der gelernte, sonst der manuelle Wert). Besucher-Meldungen ändern die Werte nie.</div>
         </div>
         <div class="card">
           <div class="ct"><b>Abweichung je Meldung</b>
@@ -188,6 +188,13 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
         <div class="card">
           <div class="ct"><b>Letzte Meldungen</b></div>
           <div id="reports"></div>
+        </div>
+        <div class="card" style="padding-bottom:10px">
+          <div class="ct"><b>Lernen</b></div>
+          <label class="set">Automatisch lernen <input type="checkbox" id="lAuto"></label>
+          <label class="set">Messung zählt nach Tagen nur noch halb <input type="number" id="lHalf" min="3" max="365"></label>
+          <label class="set">Manueller Wert zählt wie Messungen <input type="number" id="lPrior" min="1" max="50"></label>
+          <div style="padding:8px 16px 4px;text-align:right"><button class="pri" id="saveLearn" type="button">Speichern</button></div>
         </div>
         <div class="card" style="padding-bottom:10px">
           <div class="ct"><b>Besucher-Meldungen</b></div>
@@ -350,6 +357,7 @@ async function loadAnalysis() {
   analysis = await a.json(); reportsData = (await r.json()).reports;
   const v = analysis.config.visitors;
   $("vConfirm").value = v.confirm; $("vWindow").value = v.window; $("vRate").value = v.rate; $("vLive").checked = !!v.live;
+  const L = analysis.config.learn; $("lAuto").checked = !!L.auto; $("lHalf").value = L.halflife; $("lPrior").value = L.prior;
   renderAnalysis();
 }
 
@@ -360,7 +368,8 @@ function renderAnalysis() {
   $("kpis").innerHTML = `
     <div class="card kpi"><div class="muted" style="font-size:12px">Treffer (7 Tage)</div><div class="v" style="color:var(--green)">${pct}</div><div class="n">Moment ±60 s oder Beobachtung stimmte</div></div>
     <div class="card kpi"><div class="muted" style="font-size:12px">mittlere Abweichung</div><div class="v">${A.meanDev == null ? "–" : Math.round(A.meanDev) + " s"}</div><div class="n">7 Tage</div></div>
-    <div class="card kpi"><div class="muted" style="font-size:12px">Meldungen (60 Tage)</div><div class="v">${A.counts.admin + A.counts.visitor}</div><div class="n">Jan ${A.counts.admin} · Besucher ${A.counts.visitor} (${A.counts.visitorConfirmed} bestätigt)<br>${A.counts.exact} genaue Momente · ${A.counts.observed} Beobachtungen</div></div>`;
+    <div class="card kpi"><div class="muted" style="font-size:12px">Meldungen (60 Tage)</div><div class="v">${A.counts.admin + A.counts.visitor}</div><div class="n">Jan ${A.counts.admin} · Besucher ${A.counts.visitor} (${A.counts.visitorConfirmed} bestätigt)<br>${A.counts.exact} genaue Momente · ${A.counts.observed} Beobachtungen</div></div>
+    <div class="card kpi"${A.warn.n >= 3 && A.warn.wrong / A.warn.n > 0.3 ? ` style="border-color:rgba(255,176,32,.5)"` : ""}><div class="muted" style="font-size:12px">Besucher widersprechen (7 Tage)</div><div class="v" style="color:${A.warn.n >= 3 && A.warn.wrong / A.warn.n > 0.3 ? "var(--amber)" : "var(--text)"}">${A.warn.n ? A.warn.wrong + " / " + A.warn.n : "–"}</div><div class="n">${A.warn.n >= 3 && A.warn.wrong / A.warn.n > 0.3 ? "Schätzung stimmt oft nicht – mal hinschauen" : "bestätigte Meldungen gegen die Schätzung"}</div></div>`;
   $("paramTitle").textContent = "Schließzeiten " + c.name;
   $("params").innerHTML = Object.entries(LABELS).map(([k, [fall, what]]) => {
     const p = A.params[k] || {}, model = p.model;
@@ -374,7 +383,11 @@ function renderAnalysis() {
     }
     return `<tr><td><div style="font-weight:600">${fall}</div><div class="muted" style="font-size:12px">${what}</div></td>
       <td><input type="number" min="0" max="900" data-p="${k}" value="${model}" aria-label="${fall} ${what}"> <span class="muted" style="font-size:12px">${fmtS(model)}</span></td>
-      <td>${meas}</td><td>${bar}</td><td>${act}</td></tr>`;
+      <td>${meas}</td><td>${bar}</td>
+      <td>${p.learned ? `<span class="mono" style="font-weight:700">${p.learned.value}</span> <span class="muted" style="font-size:12px">${Math.round(p.learned.conf * 100)} %</span>
+        <div class="bar" style="width:70px;margin-top:4px"><i style="left:0;width:${Math.round(p.learned.conf * 100)}%;background:rgba(61,220,132,.6)"></i></div>` : `<span class="muted">–</span>`}</td>
+      <td><span class="mono" style="font-weight:700;color:${p.effective !== model ? "var(--green)" : "var(--text)"}">${p.effective}</span></td>
+      <td>${act}</td></tr>`;
   }).join("");
   // Punkte: Abweichung je Meldung, ±5 Min. Bereich
   const devs = A.devs, t0 = devs.length ? devs[0].ts : 0, t1 = devs.length ? devs[devs.length - 1].ts : 1;
@@ -413,6 +426,7 @@ $("saveParams").addEventListener("click", () => {
   const vals = {}; $("params").querySelectorAll("input[data-p]").forEach(i => vals[i.dataset.p] = +i.value);
   saveConfig({crossings: {[xid]: vals}}, "Gespeichert – gilt jetzt für alle");
 });
+$("saveLearn").addEventListener("click", () => saveConfig({learn: {auto: $("lAuto").checked, halflife: +$("lHalf").value, prior: +$("lPrior").value}}, "Gespeichert"));
 $("saveVis").addEventListener("click", () => saveConfig({visitors: {confirm: +$("vConfirm").value, window: +$("vWindow").value, rate: +$("vRate").value, live: $("vLive").checked}}, "Gespeichert"));
 $("reports").addEventListener("click", async e => {
   const ign = e.target.closest("[data-ign]"), del = e.target.closest("[data-del]");

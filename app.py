@@ -46,6 +46,9 @@ DEFAULT_CONFIG = {
                     "ab_before": 250, "ab_after": 55, "an_before": 80, "an_after": 45, "an_after_dep": 60},
     },
     "visitors": {"confirm": 2, "window": 90, "rate": 60, "live": True},
+    # Selbst lernen aus Jans genauen Messungen: Halbwertszeit (Tage) und „Vorwissen“ (so viele Messungen wiegt
+    # der manuelle Wert – mit wenigen Messungen bleibt es nah daran, mit vielen folgt es den Messungen)
+    "learn": {"auto": True, "halflife": 30, "prior": 4},
 }
 PARAM_KEYS = tuple(DEFAULT_CONFIG["crossings"]["elchinger"].keys())
 
@@ -110,6 +113,7 @@ def get_config():
         for c in CROSSINGS:
             cfg["crossings"][c].update(saved.get("crossings", {}).get(c, {}))
         cfg["visitors"].update(saved.get("visitors", {}))
+        cfg["learn"].update(saved.get("learn", {}))
     return cfg
 
 
@@ -451,7 +455,7 @@ async def realtime():
 
 @app.get("/api/config")
 def config_public():
-    return JSONResponse(get_config(), headers=NOCACHE)
+    return JSONResponse(effective_config(), headers=NOCACHE)
 
 
 def clean_snapshot(s):
@@ -542,6 +546,7 @@ async def admin_report(request: Request):
                           (time.time(), crossing, state, "admin", "jan", "", clean_snapshot(body.get("snapshot")), exact))
         _db.commit()
         rid = cur.lastrowid
+    learn_invalidate()
     return {"ok": True, "id": rid}
 
 
@@ -549,6 +554,7 @@ async def admin_report(request: Request):
 def admin_delete(rid: int, request: Request):
     need_admin(request)
     db("DELETE FROM reports WHERE id=?", (rid,))
+    learn_invalidate()
     return {"ok": True}
 
 
@@ -557,6 +563,7 @@ async def admin_ignore(rid: int, request: Request):
     need_admin(request)
     body = await request.json()
     db("UPDATE reports SET ignored=? WHERE id=?", (1 if body.get("ignored") else 0, rid))
+    learn_invalidate()
     return {"ok": True}
 
 
@@ -652,6 +659,67 @@ def admin_reports(request: Request, days: float = 7):
     return {"reports": out}
 
 
+# ---------------------------------------------------------------- Selbst lernen (Stufe 1)
+# Nur Jans genaue Messungen (Admin, „geht gerade zu/auf“) stellen die Schließzeiten ein. Neuere zählen mehr
+# (Halbwertszeit), Ausreißer fliegen raus, und der manuelle Wert zählt wie `prior` Messungen mit.
+_learn_cache = [0.0, None]
+
+
+def learn_invalidate():
+    _learn_cache[0] = 0.0
+
+
+def _wmedian(pairs):
+    pairs = sorted(pairs)
+    total, acc = sum(w for _, w in pairs), 0.0
+    for v, w in pairs:
+        acc += w
+        if acc >= total / 2:
+            return v
+    return pairs[-1][0]
+
+
+def learned(cfg=None):
+    if _learn_cache[1] is not None and _learn_cache[0] > time.time():
+        return _learn_cache[1]
+    cfg = cfg or get_config()
+    lc = cfg["learn"]
+    rows = db("SELECT * FROM reports WHERE source='admin' AND ignored=0 AND ts > ? ORDER BY ts", (time.time() - 365 * 86400,))
+    real = actual_passes(rows)
+    vals = {}
+    for r in rows:
+        e = evaluate(r, cfg, real)
+        if e["exact"] and not e["outlier"] and e["param"] in PARAM_KEYS and e["measured"] is not None:
+            vals.setdefault((r["crossing"], e["param"]), []).append((e["measured"], r["ts"]))
+    out = {c: {} for c in CROSSINGS}
+    now = time.time()
+    for (c, k), lst in vals.items():
+        v = [x for x, _ in lst]
+        if len(v) >= 5:  # Ausreißer: mehr als 3 × MAD (mind. 10 s) vom Median weg
+            med = statistics.median(v)
+            mad = max(10.0, statistics.median([abs(x - med) for x in v]))
+            lst = [(x, t) for x, t in lst if abs(x - med) <= 3 * mad] or lst
+        pairs = [(x, 0.5 ** ((now - t) / 86400 / lc["halflife"])) for x, t in lst]
+        W = sum(w for _, w in pairs)
+        manual = cfg["crossings"][c][k]
+        wmed = _wmedian(pairs)
+        est = (W * wmed + lc["prior"] * manual) / (W + lc["prior"])
+        out[c][k] = {"value": int(round(max(0, min(900, est)))), "n": len(lst), "conf": W / (W + lc["prior"]),
+                     "median": wmed}
+    _learn_cache[0], _learn_cache[1] = time.time() + 60, out
+    return out
+
+
+def effective_config():
+    """Was die Seite benutzt: bei „automatisch lernen“ die gelernten Werte, sonst die manuellen."""
+    cfg = get_config()
+    if cfg["learn"]["auto"]:
+        for c, ks in learned(cfg).items():
+            for k, l in ks.items():
+                cfg["crossings"][c][k] = l["value"]
+    return cfg
+
+
 @app.get("/api/admin/analysis")
 def admin_analysis(request: Request, days: float = 60):
     need_admin(request)
@@ -687,8 +755,14 @@ def admin_analysis(request: Request, days: float = 60):
                 p["p25"] = v[len(v) // 4]
                 p["p75"] = v[(len(v) * 3) // 4] if len(v) > 1 else v[0]
                 p["suggest"] = int(round(p["median"] / 5) * 5) if len(v) >= 3 else None
+        lr = learned(cfg).get(c, {})
+        for k, p in params.items():
+            p["learned"] = lr.get(k)
+            p["effective"] = lr[k]["value"] if cfg["learn"]["auto"] and k in lr else p["model"]
         recent = [d for d in devs if d["ts"] > time.time() - 7 * 86400]
         recent_exact = [d for d in recent if d["exact"]]
+        vis_obs = [d for d in recent if d["source"] == "visitor"]
+        warn = {"n": len(vis_obs), "wrong": sum(1 for d in vis_obs if not d["match"])}
         # Treffer: Moment ±60 s genau, Beobachtung = Schätzung lag richtig (zu/auf)
         hits = [abs(d["dev"]) <= 60 if d["exact"] else bool(d["match"]) for d in recent]
         res[c] = {
@@ -696,6 +770,7 @@ def admin_analysis(request: Request, days: float = 60):
             "devs": devs[-200:],
             "hit": (sum(hits) / len(hits)) if hits else None,
             "meanDev": (sum(abs(d["dev"]) for d in recent_exact) / len(recent_exact)) if recent_exact else None,
+            "warn": warn,
             "counts": {"admin": n_admin, "visitor": n_vis, "visitorConfirmed": n_vis_ok,
                        "exact": sum(1 for d in devs if d["exact"]), "observed": sum(1 for d in devs if not d["exact"])},
         }
@@ -775,5 +850,12 @@ async def admin_config(request: Request):
             cfg["visitors"][k] = int(vis[k])
     if isinstance(vis.get("live"), bool):
         cfg["visitors"]["live"] = vis["live"]
+    lb = body.get("learn", {})
+    if isinstance(lb.get("auto"), bool):
+        cfg["learn"]["auto"] = lb["auto"]
+    for k, lo, hi in (("halflife", 3, 365), ("prior", 1, 50)):
+        if isinstance(lb.get(k), (int, float)) and lo <= lb[k] <= hi:
+            cfg["learn"][k] = int(lb[k])
     save_config(cfg)
+    learn_invalidate()
     return cfg
