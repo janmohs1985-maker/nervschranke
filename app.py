@@ -268,9 +268,20 @@ _trips_lock = asyncio.Lock()
 _http = httpx.AsyncClient(timeout=25, headers={"User-Agent": "Nervschranke/1.1 (+https://nervschranke.de; jan@mohs.es)"})
 
 
+# Zwei Abfragen: (1) kleiner Ausschnitt um Nersingen für Regionalzüge, (2) ganzer Abschnitt Ulm–Augsburg
+# für Fernzüge. Die ICE-Abschnitte Ulm↔Augsburg liefert Transitous beim kleinen Ausschnitt nämlich nicht
+# (geprüft 6.10.2026: nur 2 von ~8 ICE in 2 h), obwohl ihr Fahrweg genau über die Übergänge führt.
+NEAR = {"min": "48.405,10.06", "max": "48.45,10.17", "zoom": "15"}
+WIDE = {"min": "48.30,9.95", "max": "48.50,10.95", "zoom": "6"}   # Zoom 6 = nur Fernverkehr
+LONG_MODES = ("HIGHSPEED_RAIL", "LONG_DISTANCE", "NIGHT_RAIL")
+
+
 @app.get("/api/trips")
 async def trips(request: Request):
-    q = str(request.url.query)
+    start, end = request.query_params.get("startTime", ""), request.query_params.get("endTime", "")
+    if not start or not end:
+        raise HTTPException(400, "startTime/endTime fehlt")
+    q = start + "|" + end
     hit = _trips_cache.get(q)
     if hit and hit[0] > time.time():
         return Response(hit[1], media_type="application/json", headers={"X-Cache": "HIT"})
@@ -279,16 +290,27 @@ async def trips(request: Request):
         if hit and hit[0] > time.time():
             return Response(hit[1], media_type="application/json", headers={"X-Cache": "HIT"})
         try:
-            r = await _http.get(TRANSITOUS + "?" + q)
-            r.raise_for_status()
+            near, wide = await asyncio.gather(
+                _http.get(TRANSITOUS, params={**NEAR, "startTime": start, "endTime": end}),
+                _http.get(TRANSITOUS, params={**WIDE, "startTime": start, "endTime": end}))
+            near.raise_for_status()
+            segs = [s for s in near.json() if s.get("mode") not in ("BUS", "COACH", "AIRPLANE", "TRAM", "FERRY")]
+            if wide.status_code == 200:
+                seen = {(s["trips"][0].get("tripId"), s.get("departure")) for s in segs if s.get("trips")}
+                for s in wide.json():
+                    key = (s["trips"][0].get("tripId"), s.get("departure")) if s.get("trips") else None
+                    if s.get("mode") in LONG_MODES and key not in seen:
+                        segs.append(s)
+                        seen.add(key)
+            body = json.dumps(segs).encode()
         except Exception:
             if hit:  # lieber alte Daten als keine
                 return Response(hit[1], media_type="application/json", headers={"X-Cache": "STALE"})
             raise HTTPException(502, "Transitous nicht erreichbar")
         for k in [k for k, v in _trips_cache.items() if v[0] < time.time() - 300]:
             _trips_cache.pop(k, None)
-        _trips_cache[q] = (time.time() + 30, r.content)
-        return Response(r.content, media_type="application/json", headers={"X-Cache": "MISS"})
+        _trips_cache[q] = (time.time() + 30, body)
+        return Response(body, media_type="application/json", headers={"X-Cache": "MISS"})
 
 # ---------------------------------------------------------------- Modell + Meldungen (öffentlich)
 
