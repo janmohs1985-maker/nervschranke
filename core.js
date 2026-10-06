@@ -299,7 +299,7 @@ function snapshotFor(id, d) {
   if (!best) return null;
   return {name: best.name, kind: best.kind, case: best.case, westbound: best.westbound, long: best.isLong,
     pass: +best.pass, closeFrom: +best.closeFrom, closeTo: +best.closeTo, delay: best.delay,
-    stationDep: best.stationDep ? +best.stationDep : null};
+    stationDep: best.stationDep ? +best.stationDep : null, shift: best.shift || 0, stops: !!best.stops};
 }
 
 const deviceId = (() => {

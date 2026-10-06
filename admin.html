@@ -178,6 +178,15 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
           <div class="mini">Gelernt = aus deinen genauen Messungen, neuere zählen mehr; die Prozent zeigen, wie sicher der Wert ist. „Gilt“ = was die Seite gerade benutzt (bei „Automatisch lernen“ der gelernte, sonst der manuelle Wert). Besucher-Meldungen ändern die Werte nie.</div>
         </div>
         <div class="card">
+          <div class="ct"><b>Zeitkorrektur der Züge</b>
+            <div style="display:flex;gap:8px"><button class="pri" id="saveTiming" type="button">Speichern</button></div></div>
+          <div class="tbl"><table>
+            <thead><tr><th>ZÜGE</th><th>MANUELL (s)</th><th>GEMESSEN</th><th>GELERNT</th><th>GILT</th></tr></thead>
+            <tbody id="timing"></tbody>
+          </table></div>
+          <div class="mini">Wie viel später (+) oder früher (−) die Züge wirklich über die Schranke fahren als aus Fahrplan und Echtzeit gerechnet. Gelernt aus „Zug fährt drüber“ an allen drei Übergängen, gilt für alle. Verschiebt Durchfahrt, Schließzeiten und die Züge in Gleisband und Karte.</div>
+        </div>
+        <div class="card">
           <div class="ct"><b>Abweichung je Meldung</b>
             <div style="display:flex;gap:12px;font-size:12px" class="muted"><span><span class="dot" style="display:inline-block;background:var(--orange)"></span> Jan</span><span><span class="dot" style="display:inline-block;background:var(--blue)"></span> Besucher</span></div></div>
           <div class="chart" id="chart"></div>
@@ -364,8 +373,24 @@ async function loadAnalysis() {
   renderAnalysis();
 }
 
+const TGROUPS = [["fern_o", "Fernzüge → Augsburg"], ["fern_w", "Fernzüge → Ulm"], ["regio_o", "Regionalzüge ohne Halt → Augsburg"],
+  ["regio_w", "Regionalzüge ohne Halt → Ulm"], ["halt_o", "Halten in Nersingen → Augsburg"], ["halt_w", "Halten in Nersingen → Ulm"]];
+const sgn = v => (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(Math.round(v)) + " s";
+function renderTiming() {
+  const T = analysis.timing || {learned: {}, effective: {}}, man = analysis.config.timing || {};
+  $("timing").innerHTML = TGROUPS.map(([k, name]) => {
+    const l = T.learned[k];
+    return `<tr><td><b>${name}</b></td>
+      <td><input type="number" data-t="${k}" value="${man[k] ?? 0}" min="-600" max="600" style="width:80px"></td>
+      <td class="mono">${l ? sgn(l.median) + ` <span class="muted">n=${l.n}</span>` : "–"}</td>
+      <td class="mono">${l ? `<b>${sgn(l.value)}</b> <span class="muted">${Math.round(l.conf * 100)} %</span>` : "–"}</td>
+      <td class="mono" style="color:var(--green)"><b>${sgn(T.effective[k] ?? 0)}</b></td></tr>`;
+  }).join("");
+}
+
 function renderAnalysis() {
   if (!analysis) return;
+  renderTiming();
   const A = analysis.crossings[xid], c = CROSSINGS.find(x => x.id === xid);
   const pct = A.hit == null ? "–" : Math.round(A.hit * 100) + " %";
   $("kpis").innerHTML = `
@@ -428,6 +453,10 @@ async function saveConfig(body, msg) {
 $("saveParams").addEventListener("click", () => {
   const vals = {}; $("params").querySelectorAll("input[data-p]").forEach(i => vals[i.dataset.p] = +i.value);
   saveConfig({crossings: {[xid]: vals}}, "Gespeichert – gilt jetzt für alle");
+});
+$("saveTiming").addEventListener("click", () => {
+  const vals = {}; document.querySelectorAll("#timing input[data-t]").forEach(i => vals[i.dataset.t] = +i.value);
+  saveConfig({timing: vals}, "Gespeichert – gilt jetzt für alle");
 });
 $("saveLearn").addEventListener("click", () => saveConfig({learn: {auto: $("lAuto").checked, halflife: +$("lHalf").value, prior: +$("lPrior").value, visitors: $("lVis").checked, visitorWeight: +$("lVisW").value}}, "Gespeichert"));
 $("saveVis").addEventListener("click", () => saveConfig({visitors: {confirm: +$("vConfirm").value, window: +$("vWindow").value, rate: +$("vRate").value, live: $("vLive").checked}}, "Gespeichert"));

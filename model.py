@@ -133,7 +133,8 @@ def profile_time(s, L, D, mode):
     return inv(s) if mode == "ab" else D - inv(L - s)
 
 
-def compute(raw, rt, model):
+def compute(raw, rt, model, timing=None):
+    timing = timing or {}
     P = {c["id"]: [] for c in CROSSINGS}
     seen = {c["id"]: set() for c in CROSSINGS}
     S, seen_seg, st_lons, station_dep = [], set(), [], {}
@@ -184,9 +185,12 @@ def compute(raw, rt, model):
         westbound = to.get("lon", 0) < frm.get("lon", 0)
         from_here, to_here = STATION in frm.get("name", ""), STATION in to.get("name", "")
         stops = from_here or to_here
+        # gelernte Zeitkorrektur (Fernzüge kriechen z. B. aus Ulm heraus und sind später da als gleichmäßig gerechnet)
+        shift = timing.get(("fern" if is_long else "halt" if stops else "regio") + ("_w" if westbound else "_o"), 0) or 0
+        dep, arr = dep + shift * 1000, arr + shift * 1000
         delay = None
         if (s.get("realTime") or r["db"]) and s.get("scheduledDeparture"):
-            delay = round((dep - ms(s["scheduledDeparture"])) / 60000)
+            delay = round((dep - shift * 1000 - ms(s["scheduledDeparture"])) / 60000)
 
         pts = [((lo - LON0) * KX, (la - LAT0) * KY) for la, lo in coords]
         cum = [0.0]
@@ -223,7 +227,7 @@ def compute(raw, rt, model):
             src = "db" if r["db"] else "rt" if s.get("realTime") else "plan"
             P[c["id"]].append({"id": trip, "name": name, "num": num, "label": label, "kind": kind, "isLong": is_long,
                                "westbound": westbound, "stops": stops, "fromHere": from_here, "case": kase,
-                               "pass": int(pas), "delay": delay, "src": src,
+                               "pass": int(pas), "delay": delay, "src": src, "shift": shift,
                                "closeFrom": int(pas - before * 1000), "closeTo": int(pas + after * 1000)})
         if near_any <= MAP_DISTANCE:
             key = f"{name}|{dep // 60000}|{westbound}"

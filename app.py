@@ -51,8 +51,16 @@ DEFAULT_CONFIG = {
     # Selbst lernen aus Jans genauen Messungen: Halbwertszeit (Tage) und „Vorwissen“ (so viele Messungen wiegt
     # der manuelle Wert – mit wenigen Messungen bleibt es nah daran, mit vielen folgt es den Messungen)
     "learn": {"auto": True, "halflife": 30, "prior": 4, "visitors": True, "visitorWeight": 0.3},
+    # Zeitkorrektur in Sekunden (+ = Zug kommt später als berechnet), gelernt aus „Zug fährt drüber“.
+    # Gruppen: fern = Fernzug, regio = Regionalzug ohne Halt, halt = hält in Nersingen; _w = Richtung Ulm, _o = Richtung Augsburg
+    "timing": {"fern_w": 0, "fern_o": 0, "regio_w": 0, "regio_o": 0, "halt_w": 0, "halt_o": 0},
 }
 PARAM_KEYS = tuple(DEFAULT_CONFIG["crossings"]["elchinger"].keys())
+TIMING_KEYS = tuple(DEFAULT_CONFIG["timing"].keys())
+
+
+def timing_group(long, stops, westbound):
+    return ("fern" if long else "halt" if stops else "regio") + ("_w" if westbound else "_o")
 
 # ---------------------------------------------------------------- Speicher
 
@@ -118,6 +126,7 @@ def get_config():
             cfg["crossings"][c].update(saved.get("crossings", {}).get(c, {}))
         cfg["visitors"].update(saved.get("visitors", {}))
         cfg["learn"].update(saved.get("learn", {}))
+        cfg["timing"].update({k: v for k, v in saved.get("timing", {}).items() if k in TIMING_KEYS})
     return cfg
 
 
@@ -484,7 +493,7 @@ async def state():
         body, _ = await trips_body(iso(now - 1800), iso(now + 5400))
         rt = await realtime_data()
         cfg = effective_config()
-        out = model.compute(json.loads(body), rt, cfg["crossings"])
+        out = model.compute(json.loads(body), rt, cfg["crossings"], cfg["timing"])
         out.update({"ok": True, "generated": int(time.time() * 1000), "db": bool(rt.get("ok")),
                     "visitors": cfg["visitors"], "model": cfg["crossings"]})
         data = json.dumps(out, separators=(",", ":")).encode()
@@ -503,7 +512,7 @@ def clean_snapshot(s):
     if not isinstance(s, dict):
         return None
     keep = {}
-    for k in ("name", "kind", "case", "westbound", "long", "pass", "closeFrom", "closeTo", "delay", "stationDep"):
+    for k in ("name", "kind", "case", "westbound", "long", "pass", "closeFrom", "closeTo", "delay", "stationDep", "shift", "stops"):
         if k in s:
             keep[k] = s[k]
     return json.dumps(keep)[:2000]
@@ -777,6 +786,10 @@ def evaluate(r, cfg, actual_pass=None):
         out["param"] = case + "_after"
     else:  # Zug fährt drüber: wie genau stimmt die Durchfahrtszeit?
         out["dev"] = r["ts"] - ps
+        # die damals schon angewandte Korrektur zurückrechnen → Fehler der reinen Fahrplan-Rechnung
+        stops = s.get("stops") if "stops" in s else case in ("an", "ab")
+        out["tgroup"] = timing_group(bool(s.get("long")), bool(stops), bool(s.get("westbound")))
+        out["tmeasured"] = out["dev"] + float(s.get("shift") or 0)
     if out["dev"] is not None and abs(out["dev"]) > 600:
         out["outlier"], out["why"] = True, "über 10 Min. daneben"
     if out["measured"] is not None and out["measured"] < -30:
@@ -807,6 +820,10 @@ _learn_cache = [0.0, None]
 
 def learn_invalidate():
     _learn_cache[0] = 0.0
+    try:
+        _tlearn_cache[0] = 0.0
+    except NameError:
+        pass
 
 
 def _wmedian(pairs):
@@ -860,6 +877,45 @@ def learned(cfg=None):
     return out
 
 
+_tlearn_cache = [0.0, None]
+
+
+def learned_timing(cfg=None):
+    """Zeitkorrektur je Gruppe aus „Zug fährt drüber“ (wie die Schließzeiten: neuere zählen mehr, Ausreißer raus)."""
+    if _tlearn_cache[1] is not None and _tlearn_cache[0] > time.time():
+        return _tlearn_cache[1]
+    cfg = cfg or get_config()
+    lc = cfg["learn"]
+    rows = db("SELECT * FROM reports WHERE ignored=0 AND state='zug' AND ts > ? ORDER BY ts", (time.time() - 365 * 86400,))
+    vals = {}
+    for r in rows:
+        vis = r["source"] == "visitor"
+        if vis and not lc.get("visitors", True):
+            continue
+        e = evaluate(r, cfg)
+        if e.get("tgroup") is None or e["outlier"] or abs(e["tmeasured"]) > 480:
+            continue
+        if vis and abs(e["dev"]) > 180:
+            continue
+        vals.setdefault(e["tgroup"], []).append((e["tmeasured"], r["ts"], float(lc.get("visitorWeight", 0.3)) if vis else 1.0))
+    out, now = {}, time.time()
+    for k, lst in vals.items():
+        v = [x for x, *_ in lst]
+        if len(v) >= 5:
+            med = statistics.median(v)
+            mad = max(10.0, statistics.median([abs(x - med) for x in v]))
+            lst = [m for m in lst if abs(m[0] - med) <= 3 * mad] or lst
+        pairs = [(x, w * 0.5 ** ((now - t) / 86400 / lc["halflife"])) for x, t, w in lst]
+        W = sum(w for _, w in pairs)
+        wmed = _wmedian(pairs)
+        manual = cfg["timing"][k]
+        est = (W * wmed + lc["prior"] * manual) / (W + lc["prior"])
+        out[k] = {"value": int(round(max(-600, min(600, est)))), "n": len(lst), "conf": W / (W + lc["prior"]), "median": wmed,
+                  "values": [round(x) for x, *_ in lst][-30:]}
+    _tlearn_cache[0], _tlearn_cache[1] = time.time() + 60, out
+    return out
+
+
 def effective_config():
     """Was die Seite benutzt: bei „automatisch lernen“ die gelernten Werte, sonst die manuellen."""
     cfg = get_config()
@@ -867,6 +923,8 @@ def effective_config():
         for c, ks in learned(cfg).items():
             for k, l in ks.items():
                 cfg["crossings"][c][k] = l["value"]
+        for k, l in learned_timing(cfg).items():
+            cfg["timing"][k] = l["value"]
     return cfg
 
 
@@ -924,7 +982,7 @@ def admin_analysis(request: Request, days: float = 60):
             "counts": {"admin": n_admin, "visitor": n_vis, "visitorConfirmed": n_vis_ok,
                        "exact": sum(1 for d in devs if d["exact"]), "observed": sum(1 for d in devs if not d["exact"])},
         }
-    return {"crossings": res, "config": cfg}
+    return {"crossings": res, "config": cfg, "timing": {"learned": learned_timing(cfg), "effective": effective_config()["timing"]}}
 
 
 @app.get("/api/admin/visits")
@@ -1010,6 +1068,9 @@ async def admin_config(request: Request):
         cfg["learn"]["visitors"] = lb["visitors"]
     if isinstance(lb.get("visitorWeight"), (int, float)) and 0 <= lb["visitorWeight"] <= 1:
         cfg["learn"]["visitorWeight"] = float(lb["visitorWeight"])
+    for k, v in body.get("timing", {}).items():
+        if k in TIMING_KEYS and isinstance(v, (int, float)) and -600 <= v <= 600:
+            cfg["timing"][k] = int(v)
     save_config(cfg)
     learn_invalidate()
     return cfg
