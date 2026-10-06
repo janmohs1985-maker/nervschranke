@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nervschranke Nersingen</title>
+<meta name="description" content="Sind die Bahnschranken in Nersingen gerade zu? Elchinger Straße, Waldstraße und Fichtenstraße – live geschätzt aus Fahrplan und Verspätungen.">
+<meta name="theme-color" content="#0C0D12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nervschranke">
+<meta property="og:title" content="Nervschranke – wo komm ich durch?">
+<meta property="og:description" content="Live-Schätzung für die drei Bahnübergänge in Nersingen.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230C0D12'/%3E%3Crect x='8' y='28' width='48' height='9' rx='4.5' fill='%23fff'/%3E%3Crect x='16' y='28' width='8' height='9' fill='%23FF3B30'/%3E%3Crect x='32' y='28' width='8' height='9' fill='%23FF3B30'/%3E%3Ccircle cx='12' cy='16' r='6' fill='%23FF3B30'/%3E%3Ccircle cx='52' cy='16' r='6' fill='%23FF3B30'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0C0D12; --card:#16171E; --card2:#1E2029; --stroke:rgba(255,255,255,.06);
+  --text:#F2F3F7; --muted:#9A9DAB; --dim:#6E7180;
+  --green:#3DDC84; --red:#FF3B30; --redtxt:#FF6B5E; --orange:#FF8A3D; --amber:#FFB020;
+  --db:#EC0016; --r:22px;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text)}
+body{font-family:'Space Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);overflow-x:hidden}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+.glow{position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(55% 35% at 100% 0%,rgba(61,220,132,.13),transparent 70%),
+             radial-gradient(50% 35% at 0% 5%,rgba(255,120,50,.14),transparent 70%)}
+main{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:22px 16px 40px;display:flex;flex-direction:column;gap:14px}
+
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:4px 2px 2px}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--orange)}
+h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-top:4px;line-height:1.1}
+.live{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);white-space:nowrap;margin-top:6px;
+  background:var(--card);border:1px solid var(--stroke);padding:7px 11px;border-radius:999px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--amber)}
+.dot.ok{background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(61,220,132,.6)}70%{box-shadow:0 0 0 7px rgba(61,220,132,0)}100%{box-shadow:0 0 0 0 rgba(61,220,132,0)}}
+.card{background:var(--card);border:1px solid var(--stroke);border-radius:var(--r)}
+.h{font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--dim);margin:6px 4px -4px;text-transform:uppercase}
+.err{color:var(--amber);font-size:14px;padding:14px 16px}
+
+/* Kacheln */
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.tile{text-align:left;padding:14px 12px;border-radius:20px;background:var(--card);border:1.5px solid var(--stroke);transition:background .2s,border-color .2s,transform .15s}
+.tile:active{transform:scale(.97)}
+.tile.sel{background:var(--card2);border-color:rgba(61,220,132,.5)}
+.tile.sel.zu{border-color:rgba(255,59,48,.6)}
+.tile .lamp{width:14px;height:14px;border-radius:50%;background:var(--green)}
+.tile.zu .lamp{background:var(--red);animation:ring 1.6s ease-out infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(255,59,48,.55)}80%{box-shadow:0 0 0 16px rgba(255,59,48,0)}100%{box-shadow:0 0 0 0 rgba(255,59,48,0)}}
+.tile .nm{font-size:13px;font-weight:600;margin-top:12px}
+.tile .tm{font-family:var(--mono);font-size:23px;font-weight:700;margin-top:2px;color:var(--green);font-variant-numeric:tabular-nums}
+.tile.zu .tm{color:var(--redtxt)}
+.tile .sb{font-size:11px;color:var(--muted)}
+@media (min-width:560px){.tile .nm{font-size:15px}.tile .tm{font-size:28px}.tile{padding:16px}}
+
+/* Tipp */
+.tip{border-radius:18px;padding:14px 16px;border:1px solid rgba(61,220,132,.25);display:flex;gap:12px;align-items:center;
+  background:linear-gradient(110deg,#17261D 30%,#1F3A29 50%,#17261D 70%);background-size:240px 100%;animation:shimmer 3s linear infinite}
+.tip.warn{border-color:rgba(255,176,32,.3);background:linear-gradient(110deg,#2A2112 30%,#3A2C12 50%,#2A2112 70%);background-size:240px 100%}
+.tip .k{font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--green)}
+.tip.warn .k{color:var(--amber)}
+.tip .t{font-size:15px;font-weight:600;margin-top:2px}
+@keyframes shimmer{0%{background-position:0 0}100%{background-position:-240px 0}}
+
+/* Gleisband */
+.band{position:relative;height:250px;overflow:hidden;border-radius:var(--r);background:#14151C;border:1px solid var(--stroke)}
+.band .city{position:absolute;top:12px;font-size:11px;color:var(--dim);font-family:var(--mono)}
+.band .road{position:absolute;top:40px;width:22px;height:176px;background:#22242D;transform:translateX(-11px)}
+.band .road.sel{background:#2A2D38;box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+.band .plat{position:absolute;top:168px;height:12px;border-radius:3px;background:#2B2E39}
+.band .platl{position:absolute;top:186px;text-align:center;font-size:10px;color:var(--dim);font-family:var(--mono);transform:translateX(-50%);white-space:nowrap}
+.band .sleepers{position:absolute;left:0;right:0;height:8px;background:repeating-linear-gradient(90deg,#3A3D49 0 3px,transparent 3px 9px)}
+.band .rail{position:absolute;left:0;right:0;height:1.5px;background:#5A5E6C}
+.band .post{position:absolute;top:56px;width:5px;height:30px;border-radius:2px;background:#C9CBD3}
+.band .arm{position:absolute;top:56px;width:44px;height:6px;transform-origin:2px 3px;border-radius:3px;
+  background:repeating-linear-gradient(90deg,#fff 0 7px,#FF3B30 7px 14px);transform:rotate(-72deg);transition:transform 1.1s ease-in-out}
+.band .x.zu .arm{transform:rotate(0)}
+.band .lamps{position:absolute;top:40px;display:flex;gap:4px;opacity:0;transition:opacity .3s}
+.band .x.zu .lamps{opacity:1}
+.band .lamps span{width:7px;height:7px;border-radius:50%}
+.band .lamps span:first-child{animation:blinkA 1s steps(1) infinite}
+.band .lamps span:last-child{animation:blinkB 1s steps(1) infinite}
+@keyframes blinkA{0%,49%{background:#FF3B30;box-shadow:0 0 10px 3px rgba(255,59,48,.7)}50%,100%{background:#3a1512;box-shadow:none}}
+@keyframes blinkB{0%,49%{background:#3a1512;box-shadow:none}50%,100%{background:#FF3B30;box-shadow:0 0 10px 3px rgba(255,59,48,.7)}}
+.band .xl{position:absolute;bottom:12px;font-size:11px;font-weight:600;color:var(--muted);transform:translateX(-50%);white-space:nowrap}
+.band .xl.sel{color:var(--text)}
+.band .empty{position:absolute;left:0;right:0;top:12px;text-align:center;font-size:12px;color:var(--dim)}
+
+/* Züge seitlich (aus „Zug-Typen“) */
+.tr{position:absolute;left:0;will-change:transform}
+.tr .b{position:absolute;inset:0;box-shadow:0 4px 14px rgba(0,0,0,.45)}
+.tr .win{position:absolute}
+.tr .door{position:absolute;width:7px;background:#FFD27A;box-shadow:0 0 8px #FFD27A;opacity:0;transition:opacity .4s}
+.tr.halt .door{opacity:1}
+.tr.rb:not(.halt) .bob{animation:bob .35s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1px)}}
+.tr .wind{position:absolute;top:4px;display:flex;flex-direction:column;gap:5px;opacity:.55}
+.tr .wind i{display:block;height:1.5px;background:#F2F3F7;border-radius:1px;animation:wind .6s linear infinite}
+.tr .wind i:nth-child(2){animation-delay:.2s}.tr .wind i:nth-child(3){animation-delay:.4s}
+@keyframes wind{0%{opacity:0;transform:translateX(0)}30%{opacity:1}100%{opacity:0;transform:translateX(var(--wd,-30px))}}
+.tr.halt .wind{display:none}
+.tr .tag{position:absolute;top:-17px;font-size:10px;font-weight:800;white-space:nowrap;padding:1px 6px;border-radius:999px;background:rgba(12,13,18,.85);border:1px solid var(--stroke)}
+
+/* Zeitstrahl */
+.tlc{padding:16px}
+.tl-head{display:flex;justify-content:space-between;align-items:baseline}
+.tl-head b{font-size:17px}
+.tl-head span{font-size:12px;color:var(--muted)}
+.tl{position:relative;height:44px;border-radius:12px;background:rgba(61,220,132,.16);overflow:hidden;margin-top:12px}
+.tl .blk{position:absolute;top:0;bottom:0;background:#E5484D;min-width:3px;display:flex;align-items:center;padding-left:5px;font-size:10px;font-weight:800;white-space:nowrap;overflow:hidden}
+.tl .now{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--text)}
+.ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px}
+
+/* Liste */
+.row{display:flex;align-items:center;gap:10px;padding:11px 14px}
+.row + .row{border-top:1px solid var(--stroke)}
+.row .t{font-family:var(--mono);font-weight:700;width:50px;flex:none;text-align:center}
+.row .t small{display:block;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600}
+.row .d{flex:1;min-width:0}
+.row .d b{display:block;font-size:14px;font-weight:600}
+.row .d span{font-size:12px;color:var(--muted)}
+.row .z{font-size:12px;color:var(--muted);text-align:right}
+.badge{flex:none;min-width:40px;text-align:center;font-weight:800;font-size:11px;padding:3px 7px;border-radius:5px;background:var(--db);color:#fff}
+.badge.ice{background:#F4F5F7;color:#C2000F;border-bottom:2px solid var(--db)}
+.badge.ic{background:#F4F5F7;color:#1E2230;border-bottom:2px solid var(--db)}
+.badge.nj{background:#0B1A3C;color:#9EC3FF;border:1px solid #2C4A8A}
+.badge.other{background:#3A3D49}
+.empty-row{padding:16px;color:var(--muted);font-size:14px}
+
+/* Karte */
+.mapwrap{position:relative;border-radius:var(--r);overflow:hidden;border:1px solid var(--stroke);height:380px;background:#15161c}
+#map{position:absolute;inset:0}
+.maptag{position:absolute;z-index:500;top:12px;left:12px;font-size:12px;font-weight:600;padding:6px 10px;border-radius:999px;
+  background:rgba(22,23,30,.85);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--stroke)}
+.maptag em{font-style:normal;color:var(--muted);font-weight:500}
+.leaflet-container{background:#15161c;font-family:inherit}
+.dark-tiles{filter:invert(1) hue-rotate(180deg) brightness(.82) contrast(.92) saturate(.55)}
+.leaflet-control-attribution{background:rgba(12,13,18,.7)!important;color:var(--dim)!important;font-size:10px}
+.leaflet-control-attribution a{color:var(--dim)!important}
+.leaflet-bar a{background:var(--card)!important;color:var(--text)!important;border-color:var(--stroke)!important}
+.mx{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--c) 22%,transparent);transition:transform .2s}
+.mx div{width:22px;height:22px;border-radius:50%;background:var(--bg);border:3px solid var(--c);display:grid;place-items:center;color:var(--c);font-weight:900;font-size:11px}
+.mx.zu{animation:ring 1.6s ease-out infinite}
+.mx.sel{transform:scale(1.2)}
+.mt{position:relative;width:100px;height:70px}
+.mt .body{position:absolute;left:50%;top:50%;border-radius:7px;box-sizing:border-box}
+.mt .lbl{position:absolute;left:50%;top:2px;transform:translateX(-50%);font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;
+  white-space:nowrap;background:#F2F3F7;color:#0C0D12;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+
+footer{color:var(--dim);font-size:12px;line-height:1.55;padding:2px 4px 0}
+footer a{color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="glow"></div>
+<main>
+  <header>
+    <div>
+      <div class="kicker">NERVSCHRANKE · NERSINGEN</div>
+      <h1>Wo komm ich durch?</h1>
+    </div>
+    <div class="live"><span class="dot" id="dot"></span><span id="liveTxt">lädt …</span></div>
+  </header>
+
+  <div class="card err" id="err" hidden>Zugdaten gerade nicht erreichbar – neuer Versuch läuft.</div>
+
+  <div class="tiles" id="tiles"></div>
+  <div class="tip" id="tip"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--green)"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><div><div class="k" id="tipK">SCHLEICHWEG-TIPP</div><div class="t" id="tipT">Zugdaten werden geholt …</div></div></div>
+
+  <section class="band" id="band" aria-label="Gleisband mit Zügen und Schranken"></section>
+
+  <section class="card tlc">
+    <div class="tl-head"><b id="selName">Elchinger Straße</b><span>nächste 30 Min.</span></div>
+    <div class="tl" id="tl"><div class="now"></div></div>
+    <div class="ticks" id="ticks"></div>
+  </section>
+
+  <div class="h" id="listHead">Züge an der Elchinger Straße</div>
+  <section class="card" id="list"><div class="empty-row">Zugdaten werden geholt …</div></section>
+
+  <div class="h">Live-Karte</div>
+  <section class="mapwrap">
+    <div id="map"></div>
+    <div class="maptag" id="maptag">Live-Karte</div>
+  </section>
+
+  <footer>
+    Geschätzt aus Fahrplan und Verspätungen – die echten Schranken können früher schließen oder länger zu bleiben.
+    Güterzüge fehlen in den Daten. Zugdaten: <a href="https://transitous.org" target="_blank" rel="noopener">Transitous</a>,
+    Karte: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>.
+  </footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+"use strict";
+// Rechnung wie in der Familie-App (RailCrossing.swift), erweitert auf drei Übergänge
+const CROSSINGS = [
+  {id: "elchinger", name: "Elchinger Straße", short: "Elchinger", at: "an der Elchinger Straße", lat: 48.42915, lon: 10.11561, half: false},
+  {id: "wald",      name: "Waldstraße",       short: "Wald",      at: "an der Waldstraße",       lat: 48.43161, lon: 10.12236, half: false},
+  {id: "fichten",   name: "Fichtenstraße",    short: "Fichten",   at: "an der Fichtenstraße",    lat: 48.43225, lon: 10.12885, half: true},
+];
+const CFG = {
+  minLat: 48.405, minLon: 10.06, maxLat: 48.45, maxLon: 10.17,
+  passDistance: 60, mapDistance: 400,
+  railModes: new Set(["HIGHSPEED_RAIL","LONG_DISTANCE","NIGHT_RAIL","REGIONAL_FAST_RAIL","REGIONAL_RAIL","RAIL","SUBURBAN"]),
+  longModes: new Set(["HIGHSPEED_RAIL","LONG_DISTANCE","NIGHT_RAIL"]),
+  station: "Nersingen",
+};
+const SOURCES = ["/api/trips", "https://api.transitous.org/api/v1/map/trips"];
+
+let passes = {}, segments = [], loaded = null, failed = false;
+let stationLon = 10.1196;
+let sel = (() => { try { return localStorage.getItem("schranke") || "elchinger"; } catch (e) { return "elchinger"; } })();
+if (location.hash && CROSSINGS.some(c => "#" + c.id === location.hash)) sel = location.hash.slice(1);
+if (!CROSSINGS.some(c => c.id === sel)) sel = "elchinger";
+
+// ?plus=5 zeigt den Stand in 5 Minuten (zum Ausprobieren)
+const OFFSET = (+new URLSearchParams(location.search).get("plus") || 0) * 60000;
+const nowD = () => new Date(Date.now() + OFFSET);
+const $ = id => document.getElementById(id);
+const hm = d => d.toLocaleTimeString("de-DE", {hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin"});
+const mins = ms => Math.max(1, Math.ceil(ms / 60000));
+const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+function decodePolyline(s) {
+  let i = 0, lat = 0, lon = 0; const out = [];
+  const next = () => { let r = 0, sh = 0, b; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32 && i < s.length); return (r & 1) ? ~(r >> 1) : (r >> 1); };
+  while (i < s.length) { lat += next(); if (i >= s.length) break; lon += next(); out.push([lat / 1e5, lon / 1e5]); }
+  return out;
+}
+
+function trainName(raw, mode) {
+  let s = (raw || "").replace(/\s*\(.*\)/, "").trim();
+  const long = ["ICE","IC","EC","EN","NJ","RJ","RJX","TGV","FLX"];
+  const first = s.split(" ")[0];
+  if (long.includes(first)) return first;
+  const m = s.match(/^([A-Za-z]+)(\d+)$/); if (m) s = m[1] + " " + m[2];
+  if (!s) return CFG.longModes.has(mode) ? "Fernzug" : "Zug";
+  return s;
+}
+// Zugart für Aussehen und Animation
+function kindOf(name, mode) {
+  const n = name.split(" ")[0];
+  if (n === "ICE" || n === "TGV" || n === "RJX") return "ice";
+  if (n === "NJ" || n === "EN" || mode === "NIGHT_RAIL") return "nj";
+  if (n === "IC" || n === "EC" || n === "RJ" || n === "FLX" || CFG.longModes.has(mode)) return "ic";
+  if (n === "RE" || n === "IRE" || n === "MEX") return "re";
+  if (n === "RB" || n === "S") return "rb";
+  return "rb";
+}
+
+function parse(raw) {
+  const P = {}; CROSSINGS.forEach(c => P[c.id] = []);
+  const S = [], seenSeg = new Set(), seen = {}; CROSSINGS.forEach(c => seen[c.id] = new Set());
+  const stLons = [];
+  for (const s of raw) {
+    if (!CFG.railModes.has(s.mode)) continue;
+    if (s.from?.name?.includes(CFG.station)) stLons.push(s.from.lon);
+    if (s.to?.name?.includes(CFG.station)) stLons.push(s.to.lon);
+    const dep = new Date(s.departure), arr = new Date(s.arrival);
+    if (isNaN(dep) || isNaN(arr)) continue;
+    const coords = decodePolyline(s.polyline);
+    if (coords.length < 2) continue;
+    const name = trainName(s.trips?.[0]?.routeShortName, s.mode);
+    const kind = kindOf(name, s.mode);
+    const isLong = CFG.longModes.has(s.mode);
+    const trip = s.trips?.[0]?.tripId || Math.random().toString(36);
+    const westbound = s.to.lon < s.from.lon;
+    const fromHere = s.from.name.includes(CFG.station), toHere = s.to.name.includes(CFG.station);
+    const stops = fromHere || toHere;
+    let delay = null;
+    if (s.realTime && s.scheduledDeparture) delay = Math.round((dep - new Date(s.scheduledDeparture)) / 60000);
+
+    // Länge entlang der Strecke (Meter) – lokale Projektion um Nersingen
+    const lat0 = 48.43, lon0 = 10.12, kx = Math.cos(lat0 * Math.PI / 180) * 111320, ky = 110540;
+    const pts = coords.map(([la, lo]) => [(lo - lon0) * kx, (la - lat0) * ky]);
+    const cum = [0];
+    for (let k = 0; k < pts.length - 1; k++) cum.push(cum[k] + Math.hypot(pts[k + 1][0] - pts[k][0], pts[k + 1][1] - pts[k][1]));
+    const total = cum[cum.length - 1]; if (!(total > 0)) continue;
+
+    let nearAny = Infinity;
+    for (const c of CROSSINGS) {
+      const cx = (c.lon - lon0) * kx, cy = (c.lat - lat0) * ky;
+      let best = Infinity, along = 0;
+      for (let k = 0; k < pts.length - 1; k++) {
+        const ax = pts[k][0] - cx, ay = pts[k][1] - cy, dx = pts[k + 1][0] - pts[k][0], dy = pts[k + 1][1] - pts[k][1];
+        const l2 = dx * dx + dy * dy, t = l2 > 0 ? Math.min(1, Math.max(0, (-ax * dx - ay * dy) / l2)) : 0;
+        const d = Math.hypot(ax + t * dx, ay + t * dy);
+        if (d < best) { best = d; along = cum[k] + t * Math.sqrt(l2); }
+      }
+      nearAny = Math.min(nearAny, best);
+      if (best > CFG.passDistance || seen[c.id].has(trip)) continue;
+      seen[c.id].add(trip);
+      const pass = new Date(+dep + (arr - dep) * along / total);
+      if (P[c.id].some(p => p.name === name && Math.abs(p.pass - pass) < 120000)) continue;
+      // Geschätzte Schließzeiten. Hält der Zug in Nersingen und fährt danach über den Übergang,
+      // ist die Schranke schon zu, während er am Bahnsteig steht (beobachtet 4.10.2026: ca. 4 Min. vorher).
+      const before = fromHere ? 250 : (c.half ? (isLong ? 60 : 80) : (isLong ? 90 : 120));
+      const after = fromHere ? 55 : (toHere ? 45 : (c.half ? 20 : 30));
+      P[c.id].push({id: trip, name, kind, isLong, westbound, stops, fromHere, pass, delay,
+        closeFrom: new Date(+pass - before * 1000), closeTo: new Date(+pass + after * 1000)});
+    }
+    if (nearAny <= CFG.mapDistance) {
+      const key = name + "|" + Math.floor(dep / 60000) + "|" + westbound;
+      if (!seenSeg.has(key)) { seenSeg.add(key); S.push({id: key, trip, name, kind, westbound, dep, arr, coords, cum}); }
+    }
+  }
+  // Hinter dem Bahnhof geht die Schranke frühestens zu, wenn derselbe Zug an der Schranke davor
+  // angekündigt wird – sonst wäre z. B. die Waldstraße vor der Elchinger Straße zu, obwohl der Zug
+  // Richtung Augsburg erst über die Elchinger Straße kommt.
+  const byTrip = {};
+  for (const id in P) for (const p of P[id]) (byTrip[p.id] = byTrip[p.id] || []).push(p);
+  for (const list of Object.values(byTrip)) {
+    list.sort((a, b) => a.pass - b.pass);
+    for (let i = 1; i < list.length; i++) {
+      if (!list[i].fromHere) continue;
+      const earliest = new Date(Math.min(...list.slice(0, i).map(p => +p.closeFrom)));
+      if (list[i].closeFrom < earliest) list[i].closeFrom = earliest;
+    }
+  }
+  for (const id in P) P[id].sort((a, b) => a.pass - b.pass);
+  if (stLons.length) stationLon = stLons.reduce((a, b) => a + b, 0) / stLons.length;
+  return {P, S};
+}
+
+async function refresh() {
+  const now = Math.floor(Date.now() / 60000) * 60000;  // gerundet: Server-Zwischenspeicher greift für alle
+  const q = new URLSearchParams({
+    min: `${CFG.minLat},${CFG.minLon}`, max: `${CFG.maxLat},${CFG.maxLon}`, zoom: "15",
+    startTime: new Date(now - 30 * 60000).toISOString(), endTime: new Date(now + 90 * 60000).toISOString(),
+  });
+  for (const base of SOURCES) {
+    try {
+      const r = await fetch(base + "?" + q, {cache: "no-store"});
+      if (!r.ok || !(r.headers.get("content-type") || "").includes("json")) continue;
+      const {P, S} = parse(await r.json());
+      passes = P; segments = S; loaded = new Date(); failed = false;
+      buildBand(); render(); return;
+    } catch (e) { /* nächste Quelle */ }
+  }
+  failed = true; render();
+}
+
+// ---------- Zustand ----------
+const closedAt = (id, d) => (passes[id] || []).find(p => p.closeFrom <= d && p.closeTo >= d);
+const nextAt = (id, d) => (passes[id] || []).find(p => p.closeFrom > d);
+
+function interp(s, d) {
+  if (d < s.dep || d > s.arr) return null;
+  const total = s.cum[s.cum.length - 1], span = s.arr - s.dep;
+  const target = span > 0 ? total * (d - s.dep) / span : 0;
+  for (let k = 0; k < s.coords.length - 1; k++) {
+    if (s.cum[k + 1] < target) continue;
+    const len = s.cum[k + 1] - s.cum[k], t = len > 0 ? (target - s.cum[k]) / len : 0;
+    const a = s.coords[k], b = s.coords[k + 1];
+    return {c: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], h: heading(a, b)};
+  }
+  return null;
+}
+const heading = (a, b) => Math.atan2((b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180), b[0] - a[0]) * 180 / Math.PI;
+
+function liveTrains(d) {
+  const out = [], moving = new Set();
+  for (const s of segments) { const p = interp(s, d); if (p) { out.push({...s, ...p, halt: false}); moving.add(s.trip); } }
+  for (const s of segments) {
+    if (s.arr > d || moving.has(s.trip)) continue;
+    const nexts = segments.filter(x => x.trip === s.trip && x.dep >= s.arr).map(x => +x.dep);
+    const until = nexts.length ? Math.min(...nexts) : +s.arr + 90000;
+    if (+d > until || d - s.arr >= 600000) continue;
+    const n = s.coords.length;
+    out.push({...s, c: s.coords[n - 1], h: heading(s.coords[n - 2], s.coords[n - 1]), halt: true});
+    moving.add(s.trip);
+  }
+  return out;
+}
+
+function select(id) {
+  sel = id;
+  try { localStorage.setItem("schranke", id); } catch (e) {}
+  history.replaceState(null, "", "#" + id);
+  const c = CROSSINGS.find(x => x.id === id);
+  map.flyTo([c.lat, c.lon], 16, {duration: 1.1});
+  buildBand(); render();
+}
+
+// ---------- Kacheln + Tipp ----------
+function renderTiles(now) {
+  $("tiles").innerHTML = CROSSINGS.map(c => {
+    const z = closedAt(c.id, now), n = nextAt(c.id, now);
+    let tm, sb;
+    if (!loaded) { tm = "–:––"; sb = failed ? "keine Daten" : "lädt"; }
+    else if (z) { tm = mmss(z.closeTo - now); sb = "bis frei"; }
+    else if (n && n.closeFrom - now < 90 * 60000) { tm = mmss(n.closeFrom - now); sb = "noch offen"; }
+    else { tm = "frei"; sb = "kein Zug"; }
+    return `<button class="tile${z ? " zu" : ""}${c.id === sel ? " sel" : ""}" data-id="${c.id}" aria-pressed="${c.id === sel}">
+      <div class="lamp"></div><div class="nm">${c.short}</div><div class="tm">${tm}</div><div class="sb">${sb}</div></button>`;
+  }).join("");
+}
+document.addEventListener("click", e => { const b = e.target.closest(".tile"); if (b) select(b.dataset.id); });
+
+function renderTip(now) {
+  if (!loaded) return;
+  const st = CROSSINGS.map(c => {
+    const z = closedAt(c.id, now), n = nextAt(c.id, now);
+    return {c, z, open: z ? 0 : (n ? n.closeFrom - now : Infinity), free: z ? z.closeTo - now : 0};
+  });
+  const open = st.filter(s => !s.z).sort((a, b) => b.open - a.open);
+  const tip = $("tip");
+  const minTxt = ms => ms < 60000 ? "weniger als 1 Min." : `${Math.floor(ms / 60000)} Min.`;
+  if (open.length) {
+    const b = open[0];
+    // gehen alle offenen etwa gleichzeitig zu, hilft nur: welche ist danach zuerst wieder frei?
+    const sameTime = open.length > 1 && b.open !== Infinity && b.open - open[open.length - 1].open < 30000;
+    tip.classList.remove("warn"); $("tipK").textContent = "SCHLEICHWEG-TIPP";
+    if (b.open === Infinity) $("tipT").textContent = `${b.c.name} ist frei – kein Zug in Sicht`;
+    else if (open.length === 3 && b.open > 10 * 60000) $("tipT").textContent = "Alle drei offen – fahr, wo du willst";
+    else if (sameTime) {
+      const first = open.map(s => ({s, p: nextAt(s.c.id, now)})).filter(x => x.p).sort((a, b) => a.p.closeTo - b.p.closeTo)[0];
+      $("tipT").textContent = `Alle ${open.length === 3 ? "drei" : "offenen"} gehen in ${minTxt(b.open)} zu` +
+        (first ? ` – danach ist die ${first.s.c.name} als erste wieder frei` : "");
+    }
+    else $("tipT").textContent = `${b.c.name} ist noch ${minTxt(b.open)} offen`;
+  } else {
+    const b = st.sort((a, b) => a.free - b.free)[0];
+    tip.classList.add("warn"); $("tipK").textContent = "ALLE DREI ZU";
+    $("tipT").textContent = `${b.c.name} geht als erste auf – in ~${mins(b.free)} Min.`;
+  }
+}
+
+// ---------- Gleisband ----------
+// Ausschnitt maßstäblich: von knapp vor der Elchinger Straße bis knapp hinter die Fichtenstraße
+// (Elchinger → Bahnhof ~160 m, Bahnhof → Wald ~340 m, Wald → Fichten ~480 m)
+const BAND = {lonMin: CROSSINGS[0].lon - 0.0052, lonMax: CROSSINGS[2].lon + 0.0048};
+const trainEls = new Map();
+let bandW = 0;
+const bx = lon => (lon - BAND.lonMin) / (BAND.lonMax - BAND.lonMin) * bandW;
+
+function buildBand() {
+  const band = $("band");
+  bandW = band.clientWidth;
+  trainEls.clear();
+  const sx = bx(stationLon), pw = Math.max(34, bx(stationLon + .0013) - bx(stationLon - .0013));
+  let h = `<div class="city" style="left:14px">← ULM</div><div class="city" style="right:14px">AUGSBURG →</div>`;
+  for (const c of CROSSINGS) h += `<div class="road${c.id === sel ? " sel" : ""}" style="left:${bx(c.lon)}px"></div>`;
+  h += `<div class="plat" style="left:${sx - pw / 2}px;width:${pw}px"></div><div class="platl" style="left:${sx}px">BF NERSINGEN</div>`;
+  for (const y of [112, 148]) h += `<div class="sleepers" style="top:${y}px"></div><div class="rail" style="top:${y}px"></div><div class="rail" style="top:${y + 7}px"></div>`;
+  h += `<div id="trains"></div>`;
+  for (const c of CROSSINGS) {
+    const x = bx(c.lon);
+    h += `<div class="x" id="x-${c.id}"><div class="post" style="left:${x - 28}px"></div><div class="arm" style="left:${x - 26}px"></div>
+      <div class="lamps" style="left:${x - 34}px"><span></span><span></span></div></div>
+      <div class="xl${c.id === sel ? " sel" : ""}" style="left:${x}px">${c.short}</div>`;
+  }
+  h += `<div class="empty" id="bandEmpty" hidden>gerade kein Zug in der Nähe</div>`;
+  band.innerHTML = h;
+}
+window.addEventListener("resize", () => { if ($("band").clientWidth !== bandW) buildBand(); });
+
+// Seitenansicht je Zugart, Front zeigt nach rechts (gespiegelt für Richtung Ulm)
+const SPRITES = {
+  ice: {w: 128, h: 22, html: `<div class="b" style="background:#F4F5F7;border-radius:4px 18px 6px 4px"></div>
+    <div class="win" style="left:6px;right:22px;top:5px;height:6px;border-radius:2px;background:repeating-linear-gradient(90deg,#1E2230 0 9px,#F4F5F7 9px 12px)"></div>
+    <div class="win" style="right:4px;top:4px;width:12px;height:7px;border-radius:0 8px 0 0;background:#1E2230"></div>
+    <div class="win" style="left:0;right:6px;bottom:4px;height:3px;background:#EC0016"></div>
+    <div class="wind" style="left:-40px"><i style="width:30px"></i><i style="width:18px;margin-left:8px"></i><i style="width:26px"></i></div>`},
+  ic: {w: 118, h: 22, html: `<div class="b" style="right:30px;background:#E8E9EC;border-radius:4px"></div>
+    <div class="win" style="left:5px;right:36px;top:5px;height:6px;background:repeating-linear-gradient(90deg,#1E2230 0 9px,#E8E9EC 9px 12px)"></div>
+    <div class="win" style="left:0;right:30px;bottom:5px;height:2.5px;background:#EC0016"></div>
+    <div class="b" style="left:auto;width:28px;top:-2px;background:#EC0016;border-radius:3px 12px 3px 3px"></div>
+    <div class="win" style="right:4px;top:3px;width:10px;height:7px;border-radius:0 7px 0 0;background:#2A0A10"></div>
+    <div class="wind" style="left:-34px"><i style="width:24px"></i><i style="width:14px;margin-left:8px"></i><i style="width:20px"></i></div>`},
+  re: {w: 96, h: 28, html: `<div class="b" style="background:#EC0016;border-radius:6px 16px 6px 6px"></div>
+    <div class="win" style="left:6px;right:20px;top:5px;height:5px;background:repeating-linear-gradient(90deg,#2A0A10 0 8px,#EC0016 8px 11px)"></div>
+    <div class="win" style="left:6px;right:8px;top:14px;height:5px;background:repeating-linear-gradient(90deg,#2A0A10 0 8px,#EC0016 8px 11px)"></div>
+    <div class="win" style="right:4px;top:4px;width:11px;height:8px;border-radius:0 9px 0 0;background:#2A0A10"></div>
+    <div class="door" style="left:26px;top:12px;height:15px"></div><div class="door" style="left:62px;top:12px;height:15px"></div>`},
+  rb: {w: 70, h: 22, html: `<div class="bob" style="position:absolute;inset:0"><div class="b" style="background:#EC0016;border-radius:5px 13px 5px 5px"></div>
+    <div class="win" style="left:6px;right:18px;top:5px;height:6px;background:repeating-linear-gradient(90deg,#2A0A10 0 8px,#EC0016 8px 11px)"></div>
+    <div class="win" style="right:4px;top:4px;width:10px;height:7px;border-radius:0 8px 0 0;background:#2A0A10"></div>
+    <div class="win" style="left:0;right:0;bottom:4px;height:2px;background:#C9CBD3"></div>
+    <div class="door" style="left:30px;top:9px;height:12px"></div></div>`},
+  nj: {w: 124, h: 22, html: `<div class="b" style="right:30px;background:#14244F;border-radius:4px"></div>
+    <div class="win" style="left:5px;right:36px;top:6px;height:6px;background:repeating-linear-gradient(90deg,#FFD27A 0 7px,#14244F 7px 12px);box-shadow:0 0 6px rgba(255,210,122,.4)"></div>
+    <div class="b" style="left:auto;width:28px;top:-2px;background:#C8102E;border-radius:3px 12px 3px 3px"></div>
+    <div class="win" style="right:4px;top:3px;width:10px;height:7px;border-radius:0 7px 0 0;background:#2A0A10"></div>`},
+};
+const TAGCOL = {ice: "#F4F5F7", ic: "#F4F5F7", re: "#FF6B7A", rb: "#FF6B7A", nj: "#9EC3FF"};
+
+function renderBand(now) {
+  if (!bandW) buildBand();
+  for (const c of CROSSINGS) { const el = $("x-" + c.id); if (el) el.classList.toggle("zu", !!closedAt(c.id, now)); }
+  const host = $("trains"); if (!host) return;
+  const live = loaded ? liveTrains(now) : [], seen = new Set();
+  let shown = 0;
+  for (const t of live) {
+    const x = bx(t.c[1]);
+    const sp = SPRITES[t.kind] || SPRITES.rb;
+    if (x < -sp.w - 20 || x > bandW + sp.w + 20) continue;
+    shown++; seen.add(t.id);
+    let el = trainEls.get(t.id);
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "tr " + t.kind;
+      el.style.width = sp.w + "px"; el.style.height = sp.h + "px";
+      el.innerHTML = `<div style="position:absolute;inset:0;${t.westbound ? "transform:scaleX(-1)" : ""}">${sp.html}</div>
+        <div class="tag" style="color:${TAGCOL[t.kind] || "#fff"};${t.westbound ? "left:4px" : "right:4px"}">${esc(t.name)}</div>`;
+      el.style.setProperty("--wd", "-30px");
+      host.appendChild(el); trainEls.set(t.id, el);
+    }
+    el.classList.toggle("halt", t.halt);
+    // Richtung Augsburg oben (Front rechts), Richtung Ulm unten (Front links)
+    const top = t.westbound ? 152 - sp.h : 116 - sp.h;
+    const left = t.westbound ? x : x - sp.w;
+    el.style.transform = `translate(${left.toFixed(1)}px,${top}px)`;
+  }
+  for (const [id, el] of trainEls) if (!seen.has(id)) { el.remove(); trainEls.delete(id); }
+  const e = $("bandEmpty");
+  if (e) {
+    e.hidden = !(loaded && !shown);
+    const soon = CROSSINGS.some(c => closedAt(c.id, now) || (nextAt(c.id, now) && nextAt(c.id, now).closeFrom - now < 120000));
+    e.textContent = soon ? "Zug im Anmarsch …" : "gerade kein Zug in der Nähe";
+  }
+}
+
+// ---------- Zeitstrahl + Liste ----------
+function renderTimeline(now) {
+  const c = CROSSINGS.find(x => x.id === sel);
+  $("selName").textContent = c.name;
+  const span = 30 * 60000, end = +now + span, tl = $("tl");
+  tl.querySelectorAll(".blk").forEach(e => e.remove());
+  for (const b of (passes[sel] || []).filter(p => p.closeTo > now && p.closeFrom < end)) {
+    const x0 = Math.max(0, b.closeFrom - now) / span * 100, x1 = Math.min(span, b.closeTo - now) / span * 100;
+    const el = document.createElement("div"); el.className = "blk";
+    el.style.left = x0 + "%"; el.style.width = (x1 - x0) + "%";
+    if (x1 - x0 > 8) el.textContent = b.name.split(" ")[0];
+    tl.insertBefore(el, tl.firstChild);
+  }
+  $("ticks").innerHTML = [0, 1, 2, 3].map(i => `<span>${hm(new Date(+now + i * 600000))}</span>`).join("");
+}
+
+function renderList(now) {
+  const c = CROSSINGS.find(x => x.id === sel);
+  $("listHead").textContent = "Züge " + c.at;
+  const list = (passes[sel] || []).filter(p => p.closeTo > now).slice(0, 8);
+  if (!list.length) {
+    $("list").innerHTML = `<div class="empty-row">${loaded ? "In den nächsten 90 Minuten ist kein Zug bekannt." : failed ? "Zugdaten gerade nicht erreichbar." : "Zugdaten werden geholt …"}</div>`;
+    return;
+  }
+  $("list").innerHTML = list.map(p => {
+    const d = p.delay == null ? "" : `<small style="color:${p.delay <= 0 ? "var(--green)" : "var(--amber)"}">${p.delay <= 0 ? "pünktlich" : "+" + p.delay}</small>`;
+    const zu = p.closeFrom <= now ? `<b style="color:var(--redtxt)">jetzt zu</b>` : p.stops ? `zu ${hm(p.closeFrom)}–${hm(p.closeTo)}` : `zu ~${mins(p.closeTo - p.closeFrom)} Min.`;
+    const cls = ["ice", "ic", "nj"].includes(p.kind) ? p.kind : "";
+    return `<div class="row"><div class="t">${hm(p.pass)}${d}</div>
+      <span class="badge ${cls}">${esc(p.name)}</span>
+      <div class="d"><b>${p.westbound ? "→ Ulm" : "→ Augsburg"}</b><span>${p.stops ? "hält in Nersingen" : "fährt durch"}</span></div>
+      <div class="z">${zu}</div></div>`;
+  }).join("");
+}
+
+function renderLive(now) {
+  $("dot").className = "dot" + (loaded && !failed ? " ok" : "");
+  if (loaded) { const s = Math.max(0, Math.floor((now - loaded) / 1000)); $("liveTxt").textContent = "live · " + (s < 60 ? `vor ${s} s` : `vor ${Math.floor(s / 60)} Min.`); }
+  $("err").hidden = !(failed && !loaded);
+  const anyZu = CROSSINGS.some(c => closedAt(c.id, now)), selZu = closedAt(sel, now);
+  document.title = (selZu ? "🔴 " : "🟢 ") + CROSSINGS.find(c => c.id === sel).short + " – Nervschranke";
+  void anyZu;
+}
+
+// ---------- Karte ----------
+const startC = CROSSINGS.find(c => c.id === sel);
+const map = L.map("map", {zoomControl: false, scrollWheelZoom: false, attributionControl: true})
+  .fitBounds(CROSSINGS.map(c => [c.lat, c.lon]), {padding: [50, 50], maxZoom: 16});
+L.control.zoom({position: "topright"}).addTo(map);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom: 19, className: "dark-tiles", attribution: "© OpenStreetMap"}).addTo(map);
+const xMarkers = {};
+for (const c of CROSSINGS) {
+  xMarkers[c.id] = L.marker([c.lat, c.lon], {zIndexOffset: -100, keyboard: false}).addTo(map).on("click", () => select(c.id));
+  xMarkers[c.id]._st = null;
+}
+const MAPSTYLE = {
+  ice: {w: 46, h: 12, s: "background:#F4F5F7;border-bottom:3px solid #EC0016"},
+  ic:  {w: 40, h: 12, s: "background:#E8E9EC;border-right:10px solid #EC0016"},
+  re:  {w: 36, h: 14, s: "background:#EC0016;border:2px solid #fff"},
+  rb:  {w: 26, h: 12, s: "background:#EC0016;border:2px solid #fff"},
+  nj:  {w: 46, h: 12, s: "background:#14244F;border:2px solid #9EC3FF"},
+};
+const tMarkers = new Map();
+
+function renderMap(now) {
+  for (const c of CROSSINGS) {
+    const st = (closedAt(c.id, now) ? "zu" : "auf") + (c.id === sel ? "s" : "");
+    if (xMarkers[c.id]._st === st) continue;
+    xMarkers[c.id]._st = st;
+    const col = st.startsWith("zu") ? "var(--red)" : "var(--green)";
+    xMarkers[c.id].setIcon(L.divIcon({className: "", iconSize: [38, 38], iconAnchor: [19, 19],
+      html: `<div class="mx${st.startsWith("zu") ? " zu" : ""}${c.id === sel ? " sel" : ""}" style="--c:${col}" title="${c.name}"><div>✕</div></div>`}));
+  }
+  const live = loaded ? liveTrains(now) : [], seen = new Set();
+  for (const t of live) {
+    seen.add(t.id);
+    const ms = MAPSTYLE[t.kind] || MAPSTYLE.rb;
+    const label = esc(t.name) + (t.halt ? " · hält" : "");
+    const key = t.kind + "|" + label + "|" + Math.round(t.h / 4);
+    let m = tMarkers.get(t.id);
+    if (!m) { m = L.marker(t.c, {interactive: false, keyboard: false}).addTo(map); tMarkers.set(t.id, m); }
+    m.setLatLng(t.c);
+    if (m._key !== key) {
+      m._key = key;
+      m.setIcon(L.divIcon({className: "", iconSize: [100, 70], iconAnchor: [50, 35],
+        html: `<div class="mt"><div class="body" style="width:${ms.w}px;height:${ms.h}px;margin:${-ms.h / 2}px 0 0 ${-ms.w / 2}px;${ms.s};transform:rotate(${t.h - 90}deg)"></div><div class="lbl">${label}</div></div>`}));
+    }
+  }
+  for (const [id, m] of tMarkers) if (!seen.has(id)) { map.removeLayer(m); tMarkers.delete(id); }
+  $("maptag").innerHTML = "Live-Karte" + (loaded && !live.length ? " <em>· gerade kein Zug</em>" : ` <em>· ${live.length} Zug${live.length === 1 ? "" : "e"}</em>`);
+}
+
+// ---------- Takt ----------
+function render() {
+  const now = nowD();
+  renderTiles(now); renderTip(now); renderTimeline(now); renderList(now); renderLive(now); renderMap(now);
+}
+// Züge im Gleisband und auf der Karte fließend bewegen
+let lastSlow = 0;
+function frame(ts) {
+  const now = nowD();
+  renderBand(now);
+  if (ts - lastSlow > 1000) { lastSlow = ts; render(); }
+  else if (loaded) {
+    for (const t of liveTrains(now)) { const m = tMarkers.get(t.id); if (m) m.setLatLng(t.c); }
+  }
+  requestAnimationFrame(frame);
+}
+buildBand();
+render();
+requestAnimationFrame(frame);
+refresh();
+setInterval(refresh, 30000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden && (!loaded || Date.now() - loaded > 25000)) refresh(); });
+</script>
+</body>
+</html>

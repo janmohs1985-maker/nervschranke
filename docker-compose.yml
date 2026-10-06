@@ -1,0 +1,30 @@
+# Nervschranke – https://nervschranke.de und https://bahn.mohs.es
+# Auf dem Server unter /home/mohs/docker/bahn. Neue Versionen holt der Cron-Eintrag
+# /etc/cron.d/nervschranke alle 5 Minuten (docker compose pull + up -d).
+services:
+  bahn:
+    image: ghcr.io/janmohs1985-maker/nervschranke:latest
+    container_name: bahn
+    restart: unless-stopped
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.services.bahn.loadbalancer.server.port=80
+      # bahn.mohs.es – Zertifikat über deSEC
+      - traefik.http.routers.bahn.rule=Host(`bahn.mohs.es`)
+      - traefik.http.routers.bahn.entrypoints=websecure
+      - traefik.http.routers.bahn.tls=true
+      - traefik.http.routers.bahn.tls.certresolver=letsencrypt
+      - traefik.http.routers.bahn.service=bahn
+      # nervschranke.de – Zertifikat über Netcup
+      - traefik.http.routers.nerv.rule=Host(`nervschranke.de`) || Host(`www.nervschranke.de`)
+      - traefik.http.routers.nerv.entrypoints=websecure
+      - traefik.http.routers.nerv.tls=true
+      - traefik.http.routers.nerv.tls.certresolver=netcup
+      - traefik.http.routers.nerv.service=bahn
+
+networks:
+  proxy:
+    external: true
