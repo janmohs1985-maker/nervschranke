@@ -31,7 +31,33 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .glow{position:fixed;inset:0;pointer-events:none;z-index:0;
   background:radial-gradient(55% 35% at 100% 0%,rgba(61,220,132,.13),transparent 70%),
              radial-gradient(50% 35% at 0% 5%,rgba(255,120,50,.14),transparent 70%)}
-main{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:22px 16px 40px;display:flex;flex-direction:column;gap:14px}
+main{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:22px 16px 110px;display:flex;flex-direction:column;gap:14px}
+
+/* Melden */
+.tile .rep{margin-top:7px;font-size:10px;font-weight:700;color:var(--amber)}
+.fab{position:fixed;z-index:900;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:8px;
+  padding:14px 20px;border-radius:999px;background:#F2F3F7;color:#0C0D12;font-weight:700;font-size:15px;white-space:nowrap;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.fab:active{transform:translateX(-50%) scale(.97)}
+.sheet-bg{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55)}
+.sheet{position:fixed;z-index:1001;left:0;right:0;bottom:0;margin:0 auto;max-width:520px;background:var(--card);border-radius:28px 28px 0 0;
+  border-top:1px solid rgba(255,255,255,.08);padding:12px 18px calc(26px + env(safe-area-inset-bottom));animation:up .3s ease-out}
+@keyframes up{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+.sheet .grip{width:40px;height:5px;border-radius:3px;background:#3A3D49;margin:0 auto 16px}
+.sheet .st{font-size:21px;font-weight:700}
+.sheet .ss{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.45}
+.sheet .sk{font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--dim);margin-top:18px}
+.chips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}
+.chip{padding:12px 4px;border-radius:14px;font-weight:600;font-size:14px;background:var(--card2);border:1.5px solid var(--stroke)}
+.chip.on{background:#2A2D38;border-color:var(--text)}
+.big2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:18px}
+.bigb{height:118px;border-radius:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font-size:18px;font-weight:700}
+.bigb.zu{background:#2A1416;border:2px solid rgba(255,59,48,.55)}
+.bigb.auf{background:#132519;border:2px solid rgba(61,220,132,.5)}
+.bigb:active{transform:scale(.97)}
+.sheet .msg{min-height:18px;margin-top:10px;font-size:13px;color:var(--amber);text-align:center}
+.sheet .cancel{width:100%;margin-top:4px;padding:12px;border-radius:14px;color:var(--muted);font-size:14px}
+.sheet .ok{width:72px;height:72px;border-radius:50%;background:rgba(61,220,132,.15);display:grid;place-items:center;margin:10px auto 14px}
+.sheet .done{width:100%;margin-top:20px;padding:15px;border-radius:16px;background:var(--text);color:var(--bg);font-weight:700;font-size:15px}
 
 header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:4px 2px 2px}
 .kicker{font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--orange)}
@@ -198,190 +224,46 @@ footer a{color:var(--dim)}
   </footer>
 </main>
 
+<button class="fab" id="fab" type="button">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+  Ich steh dran – stimmt was nicht?
+</button>
+<div class="sheet-bg" id="sheetBg" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <div class="grip"></div>
+  <div id="sheetAsk">
+    <div class="st" id="sheetTitle">Wie ist es gerade wirklich?</div>
+    <div class="ss">Deine Meldung hilft allen und macht die Vorhersage genauer.</div>
+    <div class="sk">WELCHER ÜBERGANG?</div>
+    <div class="chips" id="repX"></div>
+    <div class="big2">
+      <button class="bigb zu" id="repZu" type="button">
+        <svg width="56" height="30" viewBox="0 0 56 30" aria-hidden="true"><rect x="2" y="13" width="52" height="7" rx="3.5" fill="#fff"/><rect x="12" y="13" width="8" height="7" fill="#FF3B30"/><rect x="28" y="13" width="8" height="7" fill="#FF3B30"/><rect x="44" y="13" width="8" height="7" fill="#FF3B30"/><circle cx="6" cy="5" r="4" fill="#FF3B30"/></svg>
+        <span>Ist gerade ZU</span>
+      </button>
+      <button class="bigb auf" id="repAuf" type="button">
+        <svg width="56" height="30" viewBox="0 0 56 30" aria-hidden="true"><path d="M20 15l8 8 18-18" fill="none" stroke="#3DDC84" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Ist gerade AUF</span>
+      </button>
+    </div>
+    <div class="msg" id="repMsg" role="status"></div>
+    <button class="cancel" id="repCancel" type="button">Abbrechen</button>
+  </div>
+  <div id="sheetDone" hidden>
+    <div class="ok"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></div>
+    <div class="st" style="text-align:center">Danke, Nachbar!</div>
+    <div class="ss" style="text-align:center" id="doneT"></div>
+    <button class="done" id="doneOk" type="button">Fertig</button>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="core.js"></script>
 <script>
 "use strict";
-// Rechnung wie in der Familie-App (RailCrossing.swift), erweitert auf drei Übergänge
-const CROSSINGS = [
-  {id: "elchinger", name: "Elchinger Straße", short: "Elchinger", at: "an der Elchinger Straße", lat: 48.42915, lon: 10.11561, half: false},
-  {id: "wald",      name: "Waldstraße",       short: "Wald",      at: "an der Waldstraße",       lat: 48.43161, lon: 10.12236, half: false},
-  {id: "fichten",   name: "Fichtenstraße",    short: "Fichten",   at: "an der Fichtenstraße",    lat: 48.43225, lon: 10.12885, half: true},
-];
-const CFG = {
-  minLat: 48.405, minLon: 10.06, maxLat: 48.45, maxLon: 10.17,
-  passDistance: 60, mapDistance: 400,
-  railModes: new Set(["HIGHSPEED_RAIL","LONG_DISTANCE","NIGHT_RAIL","REGIONAL_FAST_RAIL","REGIONAL_RAIL","RAIL","SUBURBAN"]),
-  longModes: new Set(["HIGHSPEED_RAIL","LONG_DISTANCE","NIGHT_RAIL"]),
-  station: "Nersingen",
-};
-const SOURCES = ["/api/trips", "https://api.transitous.org/api/v1/map/trips"];
-
-let passes = {}, segments = [], loaded = null, failed = false;
-let stationLon = 10.1196;
 let sel = (() => { try { return localStorage.getItem("schranke") || "elchinger"; } catch (e) { return "elchinger"; } })();
 if (location.hash && CROSSINGS.some(c => "#" + c.id === location.hash)) sel = location.hash.slice(1);
 if (!CROSSINGS.some(c => c.id === sel)) sel = "elchinger";
-
-// ?plus=5 zeigt den Stand in 5 Minuten (zum Ausprobieren)
-const OFFSET = (+new URLSearchParams(location.search).get("plus") || 0) * 60000;
-const nowD = () => new Date(Date.now() + OFFSET);
-const $ = id => document.getElementById(id);
-const hm = d => d.toLocaleTimeString("de-DE", {hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin"});
-const mins = ms => Math.max(1, Math.ceil(ms / 60000));
-const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
-const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
-
-function decodePolyline(s) {
-  let i = 0, lat = 0, lon = 0; const out = [];
-  const next = () => { let r = 0, sh = 0, b; do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32 && i < s.length); return (r & 1) ? ~(r >> 1) : (r >> 1); };
-  while (i < s.length) { lat += next(); if (i >= s.length) break; lon += next(); out.push([lat / 1e5, lon / 1e5]); }
-  return out;
-}
-
-function trainName(raw, mode) {
-  let s = (raw || "").replace(/\s*\(.*\)/, "").trim();
-  const long = ["ICE","IC","EC","EN","NJ","RJ","RJX","TGV","FLX"];
-  const first = s.split(" ")[0];
-  if (long.includes(first)) return first;
-  const m = s.match(/^([A-Za-z]+)(\d+)$/); if (m) s = m[1] + " " + m[2];
-  if (!s) return CFG.longModes.has(mode) ? "Fernzug" : "Zug";
-  return s;
-}
-// Zugart für Aussehen und Animation
-function kindOf(name, mode) {
-  const n = name.split(" ")[0];
-  if (n === "ICE" || n === "TGV" || n === "RJX") return "ice";
-  if (n === "NJ" || n === "EN" || mode === "NIGHT_RAIL") return "nj";
-  if (n === "IC" || n === "EC" || n === "RJ" || n === "FLX" || CFG.longModes.has(mode)) return "ic";
-  if (n === "RE" || n === "IRE" || n === "MEX") return "re";
-  if (n === "RB" || n === "S") return "rb";
-  return "rb";
-}
-
-function parse(raw) {
-  const P = {}; CROSSINGS.forEach(c => P[c.id] = []);
-  const S = [], seenSeg = new Set(), seen = {}; CROSSINGS.forEach(c => seen[c.id] = new Set());
-  const stLons = [];
-  for (const s of raw) {
-    if (!CFG.railModes.has(s.mode)) continue;
-    if (s.from?.name?.includes(CFG.station)) stLons.push(s.from.lon);
-    if (s.to?.name?.includes(CFG.station)) stLons.push(s.to.lon);
-    const dep = new Date(s.departure), arr = new Date(s.arrival);
-    if (isNaN(dep) || isNaN(arr)) continue;
-    const coords = decodePolyline(s.polyline);
-    if (coords.length < 2) continue;
-    const name = trainName(s.trips?.[0]?.routeShortName, s.mode);
-    const kind = kindOf(name, s.mode);
-    const isLong = CFG.longModes.has(s.mode);
-    const trip = s.trips?.[0]?.tripId || Math.random().toString(36);
-    const westbound = s.to.lon < s.from.lon;
-    const fromHere = s.from.name.includes(CFG.station), toHere = s.to.name.includes(CFG.station);
-    const stops = fromHere || toHere;
-    let delay = null;
-    if (s.realTime && s.scheduledDeparture) delay = Math.round((dep - new Date(s.scheduledDeparture)) / 60000);
-
-    // Länge entlang der Strecke (Meter) – lokale Projektion um Nersingen
-    const lat0 = 48.43, lon0 = 10.12, kx = Math.cos(lat0 * Math.PI / 180) * 111320, ky = 110540;
-    const pts = coords.map(([la, lo]) => [(lo - lon0) * kx, (la - lat0) * ky]);
-    const cum = [0];
-    for (let k = 0; k < pts.length - 1; k++) cum.push(cum[k] + Math.hypot(pts[k + 1][0] - pts[k][0], pts[k + 1][1] - pts[k][1]));
-    const total = cum[cum.length - 1]; if (!(total > 0)) continue;
-
-    let nearAny = Infinity;
-    for (const c of CROSSINGS) {
-      const cx = (c.lon - lon0) * kx, cy = (c.lat - lat0) * ky;
-      let best = Infinity, along = 0;
-      for (let k = 0; k < pts.length - 1; k++) {
-        const ax = pts[k][0] - cx, ay = pts[k][1] - cy, dx = pts[k + 1][0] - pts[k][0], dy = pts[k + 1][1] - pts[k][1];
-        const l2 = dx * dx + dy * dy, t = l2 > 0 ? Math.min(1, Math.max(0, (-ax * dx - ay * dy) / l2)) : 0;
-        const d = Math.hypot(ax + t * dx, ay + t * dy);
-        if (d < best) { best = d; along = cum[k] + t * Math.sqrt(l2); }
-      }
-      nearAny = Math.min(nearAny, best);
-      if (best > CFG.passDistance || seen[c.id].has(trip)) continue;
-      seen[c.id].add(trip);
-      const pass = new Date(+dep + (arr - dep) * along / total);
-      if (P[c.id].some(p => p.name === name && Math.abs(p.pass - pass) < 120000)) continue;
-      // Geschätzte Schließzeiten. Hält der Zug in Nersingen und fährt danach über den Übergang,
-      // ist die Schranke schon zu, während er am Bahnsteig steht (beobachtet 4.10.2026: ca. 4 Min. vorher).
-      const before = fromHere ? 250 : (c.half ? (isLong ? 60 : 80) : (isLong ? 90 : 120));
-      const after = fromHere ? 55 : (toHere ? 45 : (c.half ? 20 : 30));
-      P[c.id].push({id: trip, name, kind, isLong, westbound, stops, fromHere, pass, delay,
-        closeFrom: new Date(+pass - before * 1000), closeTo: new Date(+pass + after * 1000)});
-    }
-    if (nearAny <= CFG.mapDistance) {
-      const key = name + "|" + Math.floor(dep / 60000) + "|" + westbound;
-      if (!seenSeg.has(key)) { seenSeg.add(key); S.push({id: key, trip, name, kind, westbound, dep, arr, coords, cum}); }
-    }
-  }
-  // Hinter dem Bahnhof geht die Schranke frühestens zu, wenn derselbe Zug an der Schranke davor
-  // angekündigt wird – sonst wäre z. B. die Waldstraße vor der Elchinger Straße zu, obwohl der Zug
-  // Richtung Augsburg erst über die Elchinger Straße kommt.
-  const byTrip = {};
-  for (const id in P) for (const p of P[id]) (byTrip[p.id] = byTrip[p.id] || []).push(p);
-  for (const list of Object.values(byTrip)) {
-    list.sort((a, b) => a.pass - b.pass);
-    for (let i = 1; i < list.length; i++) {
-      if (!list[i].fromHere) continue;
-      const earliest = new Date(Math.min(...list.slice(0, i).map(p => +p.closeFrom)));
-      if (list[i].closeFrom < earliest) list[i].closeFrom = earliest;
-    }
-  }
-  for (const id in P) P[id].sort((a, b) => a.pass - b.pass);
-  if (stLons.length) stationLon = stLons.reduce((a, b) => a + b, 0) / stLons.length;
-  return {P, S};
-}
-
-async function refresh() {
-  const now = Math.floor(Date.now() / 60000) * 60000;  // gerundet: Server-Zwischenspeicher greift für alle
-  const q = new URLSearchParams({
-    min: `${CFG.minLat},${CFG.minLon}`, max: `${CFG.maxLat},${CFG.maxLon}`, zoom: "15",
-    startTime: new Date(now - 30 * 60000).toISOString(), endTime: new Date(now + 90 * 60000).toISOString(),
-  });
-  for (const base of SOURCES) {
-    try {
-      const r = await fetch(base + "?" + q, {cache: "no-store"});
-      if (!r.ok || !(r.headers.get("content-type") || "").includes("json")) continue;
-      const {P, S} = parse(await r.json());
-      passes = P; segments = S; loaded = new Date(); failed = false;
-      buildBand(); render(); return;
-    } catch (e) { /* nächste Quelle */ }
-  }
-  failed = true; render();
-}
-
-// ---------- Zustand ----------
-const closedAt = (id, d) => (passes[id] || []).find(p => p.closeFrom <= d && p.closeTo >= d);
-const nextAt = (id, d) => (passes[id] || []).find(p => p.closeFrom > d);
-
-function interp(s, d) {
-  if (d < s.dep || d > s.arr) return null;
-  const total = s.cum[s.cum.length - 1], span = s.arr - s.dep;
-  const target = span > 0 ? total * (d - s.dep) / span : 0;
-  for (let k = 0; k < s.coords.length - 1; k++) {
-    if (s.cum[k + 1] < target) continue;
-    const len = s.cum[k + 1] - s.cum[k], t = len > 0 ? (target - s.cum[k]) / len : 0;
-    const a = s.coords[k], b = s.coords[k + 1];
-    return {c: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], h: heading(a, b)};
-  }
-  return null;
-}
-const heading = (a, b) => Math.atan2((b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180), b[0] - a[0]) * 180 / Math.PI;
-
-function liveTrains(d) {
-  const out = [], moving = new Set();
-  for (const s of segments) { const p = interp(s, d); if (p) { out.push({...s, ...p, halt: false}); moving.add(s.trip); } }
-  for (const s of segments) {
-    if (s.arr > d || moving.has(s.trip)) continue;
-    const nexts = segments.filter(x => x.trip === s.trip && x.dep >= s.arr).map(x => +x.dep);
-    const until = nexts.length ? Math.min(...nexts) : +s.arr + 90000;
-    if (+d > until || d - s.arr >= 600000) continue;
-    const n = s.coords.length;
-    out.push({...s, c: s.coords[n - 1], h: heading(s.coords[n - 2], s.coords[n - 1]), halt: true});
-    moving.add(s.trip);
-  }
-  return out;
-}
 
 function select(id) {
   sel = id;
@@ -392,17 +274,47 @@ function select(id) {
   buildBand(); render();
 }
 
+// ---------- Meldungen von Besuchern ----------
+// Bestätigte Meldungen (genug Geräte oder Admin) gelten 3 Minuten und gehen vor die Schätzung.
+let LIVE = {};
+async function pollLive() {
+  try {
+    const r = await fetch("/api/live", {cache: "no-store"});
+    if (!r.ok) return;
+    const d = await r.json();
+    LIVE = d.live === false ? {} : d.crossings || {};
+  } catch (e) { /* ohne Server keine Meldungen */ }
+}
+function reported(id) {
+  const l = LIVE[id];
+  if (!l || !l.state || !l.at || Date.now() / 1000 - l.at > 180) return null;
+  return l.state;
+}
+function closedEff(id, now) {
+  const m = closedAt(id, now), r = reported(id);
+  if (r === "auf") return null;
+  if (r === "zu" && !m) return {reported: true, closeTo: null};
+  return m;
+}
+const agoTxt = ts => { const s = Math.max(0, Math.round(Date.now() / 1000 - ts)); return s < 60 ? "gerade" : `vor ${Math.floor(s / 60)} Min.`; };
+
 // ---------- Kacheln + Tipp ----------
 function renderTiles(now) {
   $("tiles").innerHTML = CROSSINGS.map(c => {
-    const z = closedAt(c.id, now), n = nextAt(c.id, now);
+    const z = closedEff(c.id, now), n = nextAt(c.id, now), r = reported(c.id), l = LIVE[c.id] || {};
     let tm, sb;
-    if (!loaded) { tm = "–:––"; sb = failed ? "keine Daten" : "lädt"; }
+    if (!loaded && !r) { tm = "–:––"; sb = failed ? "keine Daten" : "lädt"; }
+    else if (z && z.reported) { tm = "zu"; sb = "gemeldet " + agoTxt(l.at); }
     else if (z) { tm = mmss(z.closeTo - now); sb = "bis frei"; }
+    else if (r === "auf" && closedAt(c.id, now)) { tm = "auf"; sb = "gemeldet " + agoTxt(l.at); }
     else if (n && n.closeFrom - now < 90 * 60000) { tm = mmss(n.closeFrom - now); sb = "noch offen"; }
     else { tm = "frei"; sb = "kein Zug"; }
+    // noch nicht bestätigte Meldungen als Hinweis
+    let cnt = "";
+    if (!r && (l.zu || l.auf)) { const k = Math.max(l.zu, l.auf), w = l.zu >= l.auf ? "zu" : "auf"; cnt = `${k} ${k > 1 ? "melden" : "meldet"} ${w}`; }
     return `<button class="tile${z ? " zu" : ""}${c.id === sel ? " sel" : ""}" data-id="${c.id}" aria-pressed="${c.id === sel}">
-      <div class="lamp"></div><div class="nm">${c.short}</div><div class="tm">${tm}</div><div class="sb">${sb}</div></button>`;
+      <div class="lamp"></div><div class="nm">${c.short}</div><div class="tm">${tm}</div><div class="sb">${sb}</div>
+      ${cnt ? `<div class="rep">${cnt}</div>` : ""}</button>`;
   }).join("");
 }
 document.addEventListener("click", e => { const b = e.target.closest(".tile"); if (b) select(b.dataset.id); });
@@ -410,8 +322,8 @@ document.addEventListener("click", e => { const b = e.target.closest(".tile"); i
 function renderTip(now) {
   if (!loaded) return;
   const st = CROSSINGS.map(c => {
-    const z = closedAt(c.id, now), n = nextAt(c.id, now);
-    return {c, z, open: z ? 0 : (n ? n.closeFrom - now : Infinity), free: z ? z.closeTo - now : 0};
+    const z = closedEff(c.id, now), n = nextAt(c.id, now);
+    return {c, z, open: z ? 0 : (n ? n.closeFrom - now : Infinity), free: z ? (z.closeTo ? z.closeTo - now : 120000) : 0};
   });
   const open = st.filter(s => !s.z).sort((a, b) => b.open - a.open);
   const tip = $("tip");
@@ -497,7 +409,7 @@ const TAGCOL = {ice: "#F4F5F7", ic: "#F4F5F7", re: "#FF6B7A", rb: "#FF6B7A", nj:
 
 function renderBand(now) {
   if (!bandW) buildBand();
-  for (const c of CROSSINGS) { const el = $("x-" + c.id); if (el) el.classList.toggle("zu", !!closedAt(c.id, now)); }
+  for (const c of CROSSINGS) { const el = $("x-" + c.id); if (el) el.classList.toggle("zu", !!closedEff(c.id, now)); }
   const host = $("trains"); if (!host) return;
   const live = loaded ? liveTrains(now) : [], seen = new Set();
   let shown = 0;
@@ -526,7 +438,7 @@ function renderBand(now) {
   const e = $("bandEmpty");
   if (e) {
     e.hidden = !(loaded && !shown);
-    const soon = CROSSINGS.some(c => closedAt(c.id, now) || (nextAt(c.id, now) && nextAt(c.id, now).closeFrom - now < 120000));
+    const soon = CROSSINGS.some(c => closedEff(c.id, now) || (nextAt(c.id, now) && nextAt(c.id, now).closeFrom - now < 120000));
     e.textContent = soon ? "Zug im Anmarsch …" : "gerade kein Zug in der Nähe";
   }
 }
@@ -570,7 +482,7 @@ function renderLive(now) {
   $("dot").className = "dot" + (loaded && !failed ? " ok" : "");
   if (loaded) { const s = Math.max(0, Math.floor((now - loaded) / 1000)); $("liveTxt").textContent = "live · " + (s < 60 ? `vor ${s} s` : `vor ${Math.floor(s / 60)} Min.`); }
   $("err").hidden = !(failed && !loaded);
-  const anyZu = CROSSINGS.some(c => closedAt(c.id, now)), selZu = closedAt(sel, now);
+  const anyZu = CROSSINGS.some(c => closedEff(c.id, now)), selZu = closedEff(sel, now);
   document.title = (selZu ? "🔴 " : "🟢 ") + CROSSINGS.find(c => c.id === sel).short + " – Nervschranke";
   void anyZu;
 }
@@ -597,7 +509,7 @@ const tMarkers = new Map();
 
 function renderMap(now) {
   for (const c of CROSSINGS) {
-    const st = (closedAt(c.id, now) ? "zu" : "auf") + (c.id === sel ? "s" : "");
+    const st = (closedEff(c.id, now) ? "zu" : "auf") + (c.id === sel ? "s" : "");
     if (xMarkers[c.id]._st === st) continue;
     xMarkers[c.id]._st = st;
     const col = st.startsWith("zu") ? "var(--red)" : "var(--green)";
@@ -639,12 +551,55 @@ function frame(ts) {
   }
   requestAnimationFrame(frame);
 }
+// ---------- Melden ----------
+let repX = sel;
+function openSheet(view) {
+  $("sheetBg").hidden = false; $("sheet").hidden = false;
+  $("sheetAsk").hidden = view !== "ask"; $("sheetDone").hidden = view !== "done";
+  if (view === "ask") { repX = sel; $("repMsg").textContent = ""; renderRepX(); }
+}
+function closeSheet() { $("sheetBg").hidden = true; $("sheet").hidden = true; }
+function renderRepX() {
+  $("repX").innerHTML = CROSSINGS.map(c =>
+    `<button class="chip${c.id === repX ? " on" : ""}" data-x="${c.id}" aria-pressed="${c.id === repX}">${c.short}</button>`).join("");
+}
+async function sendReport(state) {
+  const c = CROSSINGS.find(x => x.id === repX), at = new Date();
+  $("repMsg").textContent = "wird gesendet …";
+  const res = await postJSON("/api/report", {crossing: repX, state, device: deviceId, snapshot: snapshotFor(repX, nowD())});
+  if (res.ok) {
+    if (res.data?.crossings) LIVE = res.data.crossings;
+    const more = VISITORS.confirm - 1;
+    $("doneT").textContent = `${c.name}: ${state} um ${at.toLocaleTimeString("de-DE", {timeZone: "Europe/Berlin"})}. ` +
+      (more > 0 ? `Sobald ${more === 1 ? "noch jemand" : more + " weitere"} dasselbe meldet, sehen es alle auf der Seite.` : "Alle sehen es jetzt auf der Seite.");
+    openSheet("done"); render();
+  } else {
+    $("repMsg").textContent = res.status === 429 ? "Du hast gerade schon gemeldet – in einer Minute wieder." : "Melden klappt gerade nicht. Später nochmal?";
+  }
+}
+$("fab").addEventListener("click", () => openSheet("ask"));
+$("sheetBg").addEventListener("click", closeSheet);
+$("repCancel").addEventListener("click", closeSheet);
+$("doneOk").addEventListener("click", closeSheet);
+$("repZu").addEventListener("click", () => sendReport("zu"));
+$("repAuf").addEventListener("click", () => sendReport("auf"));
+$("repX").addEventListener("click", e => { const b = e.target.closest("[data-x]"); if (b) { repX = b.dataset.x; renderRepX(); } });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("sheet").hidden) closeSheet(); });
+
+// ---------- Start ----------
+window.onData = () => { buildBand(); render(); };
 buildBand();
 render();
 requestAnimationFrame(frame);
-refresh();
+loadConfig().then(refresh);
+pollLive();
 setInterval(refresh, 30000);
-document.addEventListener("visibilitychange", () => { if (!document.hidden && (!loaded || Date.now() - loaded > 25000)) refresh(); });
+setInterval(pollLive, 15000);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  pollLive();
+  if (!loaded || Date.now() - loaded > 25000) refresh();
+});
 </script>
 </body>
 </html>

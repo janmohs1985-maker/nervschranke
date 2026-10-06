@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Nervschranke Admin</title>
+<meta name="theme-color" content="#0C0D12">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0}
+body{min-height:100vh;display:grid;place-items:center;padding:16px;background:#0C0D12;color:#F2F3F7;font-family:'Space Grotesk',system-ui,sans-serif}
+form{width:100%;max-width:360px;background:#16171E;border:1px solid rgba(255,255,255,.06);border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:14px}
+.k{font-size:12px;font-weight:700;letter-spacing:.14em;color:#FF8A3D}
+h1{font-size:24px;letter-spacing:-.02em}
+label{font-size:13px;color:#9A9DAB}
+input{width:100%;margin-top:6px;padding:14px;border-radius:14px;border:1.5px solid rgba(255,255,255,.1);background:#0C0D12;color:#F2F3F7;font:inherit;font-size:16px}
+input:focus{outline:none;border-color:#FF8A3D}
+button{padding:15px;border:0;border-radius:14px;background:#F2F3F7;color:#0C0D12;font:inherit;font-weight:700;font-size:15px;cursor:pointer}
+.err{color:#FF6B5E;font-size:13px}
+a{color:#9A9DAB;font-size:13px;text-align:center}
+</style>
+</head>
+<body>
+<form method="post" action="/admin/login">
+  <div class="k">NERVSCHRANKE · ADMIN</div>
+  <h1>Anmelden</h1>
+  <div class="err" id="err" hidden></div>
+  <label>Passwort<input type="password" name="passwort" autocomplete="current-password" required autofocus></label>
+  <button type="submit">Anmelden</button>
+  <a href="/">zurück zur Seite</a>
+</form>
+<script>
+const f = new URLSearchParams(location.search).get("fehler");
+if (f) { const e = document.getElementById("err"); e.hidden = false; e.textContent = f === "warte" ? "Kurz warten und nochmal versuchen." : "Passwort stimmt nicht."; }
+</script>
+</body>
+</html>

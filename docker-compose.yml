@@ -6,6 +6,10 @@ services:
     image: ghcr.io/janmohs1985-maker/nervschranke:latest
     container_name: bahn
     restart: unless-stopped
+    env_file:
+      - ./admin.env          # ADMIN_PASSWORD=… (trägt Jan selbst ein, nicht im Repository)
+    volumes:
+      - ./data:/data         # Meldungen + Einstellungen (SQLite)
     networks:
       - proxy
     labels:

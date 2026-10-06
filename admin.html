@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Nervschranke Admin</title>
+<meta name="theme-color" content="#0C0D12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Schranke Admin">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0C0D12;--card:#16171E;--card2:#1E2029;--stroke:rgba(255,255,255,.06);--text:#F2F3F7;--muted:#9A9DAB;--dim:#6E7180;
+  --green:#3DDC84;--red:#FF3B30;--redtxt:#FF6B5E;--orange:#FF8A3D;--amber:#FFB020;--blue:#7AA2FF;--mono:'JetBrains Mono',ui-monospace,monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text)}
+body{font-family:'Space Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+button,input{font:inherit;color:inherit}
+button{border:0;background:none;cursor:pointer}
+main{max-width:1100px;margin:0 auto;padding:22px 16px 40px;display:flex;flex-direction:column;gap:14px}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.kicker{font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--orange)}
+h1{font-size:26px;font-weight:700;letter-spacing:-.02em;margin-top:4px}
+.links{display:flex;gap:14px;font-size:13px;margin-top:8px}
+.links a{color:var(--muted)}
+.seg{display:grid;gap:4px;background:var(--card);padding:4px;border-radius:14px;border:1px solid var(--stroke)}
+.seg button{padding:11px 6px;border-radius:11px;font-weight:600;font-size:14px;color:var(--muted)}
+.seg button.on{background:#2A2D38;color:var(--text)}
+.card{background:var(--card);border:1px solid var(--stroke);border-radius:20px}
+.h{font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--dim);margin:4px 4px -6px;text-transform:uppercase}
+.mono{font-family:var(--mono)}
+.muted{color:var(--muted)}
+/* Messen */
+.model{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px}
+.lbl{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--dim)}
+.big{width:100%;height:210px;border-radius:28px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;transition:transform .1s}
+.big:active{transform:scale(.98)}
+.big.auf{background:#132519;border:2px solid rgba(61,220,132,.5);animation:breatheG 2s infinite}
+.big.zu{background:#2A1416;border:2px solid rgba(255,59,48,.6);animation:breathe 2s infinite}
+.big .k{font-size:13px;font-weight:700;letter-spacing:.12em;opacity:.8}
+.big .l{font-size:44px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.big .s{font-family:var(--mono);font-size:15px;opacity:.85}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(255,59,48,.45)}50%{box-shadow:0 0 0 14px rgba(255,59,48,0)}}
+@keyframes breatheG{0%,100%{box-shadow:0 0 0 0 rgba(61,220,132,.4)}50%{box-shadow:0 0 0 14px rgba(61,220,132,0)}}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.btn2{padding:14px;border-radius:16px;background:var(--card);border:1px solid rgba(255,255,255,.08);font-weight:600;font-size:14px}
+.row{display:flex;align-items:center;gap:10px;padding:10px 14px}
+.row + .row{border-top:1px solid var(--stroke)}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.badge{font-weight:800;font-size:11px;padding:2px 6px;border-radius:5px;background:#EC0016;color:#fff}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:600;font-size:14px;z-index:99}
+/* Auswertung */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.kpi{padding:14px 16px}
+.kpi .v{font-family:var(--mono);font-size:26px;font-weight:700;margin-top:4px}
+.kpi .n{font-size:12px;color:var(--dim)}
+.cols{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+.cols > .main{flex:999 1 560px;min-width:0;display:flex;flex-direction:column;gap:14px}
+.cols > .side{flex:1 1 300px;min-width:0;display:flex;flex-direction:column;gap:14px}
+.ct{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 16px;flex-wrap:wrap}
+.ct b{font-size:17px}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
+th{padding:8px;font-size:11px;letter-spacing:.08em;color:var(--dim);text-align:left;font-weight:700}
+td{padding:10px 8px;border-top:1px solid var(--stroke);vertical-align:middle}
+th:first-child,td:first-child{padding-left:16px}
+th:last-child,td:last-child{padding-right:16px;text-align:right}
+td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:var(--bg);font-family:var(--mono);font-size:14px}
+.bar{position:relative;width:110px;height:8px;border-radius:4px;background:#22242D}
+.bar i{position:absolute;top:0;bottom:0;border-radius:4px;background:rgba(255,138,61,.45)}
+.bar b{position:absolute;top:-3px;width:3px;height:14px;border-radius:2px;background:var(--text)}
+.pri{padding:9px 14px;border-radius:11px;background:var(--text);color:var(--bg);font-weight:700;font-size:13px}
+.sec{padding:7px 12px;border-radius:9px;background:#22242D;color:var(--muted);font-weight:600;font-size:12px}
+.go{padding:7px 12px;border-radius:9px;background:var(--orange);color:var(--bg);font-weight:700;font-size:12px}
+.chart{position:relative;height:170px;margin:4px 16px 0;border-left:1px solid #2A2D38}
+.chart .z{position:absolute;left:0;right:0;top:50%;height:1px;background:#3A3D49}
+.chart .ok{position:absolute;left:0;right:0;background:rgba(61,220,132,.07)}
+.chart span{position:absolute;width:10px;height:10px;border-radius:50%;margin:-5px 0 0 -5px}
+.chart small{position:absolute;left:6px;font-size:11px;color:var(--dim)}
+.tag{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;white-space:nowrap}
+.set{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px;padding:6px 16px}
+.set input[type=number]{width:80px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:var(--bg);font-family:var(--mono)}
+.mini{font-size:12px;color:var(--muted);padding:0 16px 14px}
+.link{color:var(--muted);font-size:12px;text-decoration:underline}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <div class="kicker">NERVSCHRANKE · ADMIN</div>
+      <h1 id="title">Messen an der Schranke</h1>
+    </div>
+    <div class="links"><a href="/">zur Seite</a><a href="/admin/logout">abmelden</a></div>
+  </header>
+
+  <div class="seg" id="tabs" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+    <button data-tab="messen" class="on">Messen</button><button data-tab="auswertung">Auswertung</button>
+  </div>
+  <div class="seg" id="xsel" style="grid-template-columns:repeat(3,minmax(0,1fr))"></div>
+
+  <!-- Messen -->
+  <section id="messen" style="display:flex;flex-direction:column;gap:14px">
+    <div class="card model">
+      <div><div class="lbl">MODELL SAGT</div><div style="font-size:15px;font-weight:600;margin-top:2px" id="modelTxt">lädt …</div></div>
+      <div style="text-align:right"><div class="lbl">ZUG</div><div style="display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:2px" id="trainTxt">–</div></div>
+    </div>
+    <button class="big auf" id="big" type="button"><div class="k" id="bigK">SCHRANKE IST AUF</div><div class="l" id="bigL">Jetzt ZU</div><div class="s" id="bigS">tippen, sobald sie runtergeht</div></button>
+    <div class="two">
+      <button class="btn2" id="zug" type="button">Zug fährt gerade drüber</button>
+      <button class="btn2 muted" id="undo" type="button">Letzte rückgängig</button>
+    </div>
+    <div class="h">Heute gemessen</div>
+    <div class="card" id="today"><div class="row muted">noch nichts</div></div>
+  </section>
+
+  <!-- Auswertung -->
+  <section id="auswertung" hidden style="flex-direction:column;gap:14px">
+    <div class="kpis" id="kpis"></div>
+    <div class="cols">
+      <div class="main">
+        <div class="card">
+          <div class="ct"><b id="paramTitle">Schließzeiten</b>
+            <div style="display:flex;gap:8px"><button class="sec" id="allSug" type="button">Alle Vorschläge eintragen</button><button class="pri" id="saveParams" type="button">Speichern</button></div></div>
+          <div class="tbl"><table>
+            <thead><tr><th>FALL</th><th>MODELL (s)</th><th>GEMESSEN</th><th>STREUUNG</th><th></th></tr></thead>
+            <tbody id="params"></tbody>
+          </table></div>
+          <div class="mini">Vorschlag = Median aus deinen Messungen und bestätigten Besucher-Meldungen (ab 3 Werten). „Speichern“ gilt sofort für alle Besucher.</div>
+        </div>
+        <div class="card">
+          <div class="ct"><b>Abweichung je Meldung</b>
+            <div style="display:flex;gap:12px;font-size:12px" class="muted"><span><span class="dot" style="display:inline-block;background:var(--orange)"></span> Jan</span><span><span class="dot" style="display:inline-block;background:var(--blue)"></span> Besucher</span></div></div>
+          <div class="chart" id="chart"></div>
+          <div class="mini" style="padding-top:8px">Oben: Schranke ging später als geschätzt · unten: früher · grüner Streifen: ±60 s</div>
+        </div>
+      </div>
+      <div class="side">
+        <div class="card">
+          <div class="ct"><b>Letzte Meldungen</b></div>
+          <div id="reports"></div>
+        </div>
+        <div class="card" style="padding-bottom:10px">
+          <div class="ct"><b>Besucher-Meldungen</b></div>
+          <label class="set">Zählt ab übereinstimmenden Geräten <input type="number" id="vConfirm" min="1" max="10"></label>
+          <label class="set">innerhalb von Sekunden <input type="number" id="vWindow" min="10" max="600"></label>
+          <label class="set">pro Gerät höchstens 1 je Sekunden <input type="number" id="vRate" min="0" max="3600"></label>
+          <label class="set">Live auf der Seite zeigen <input type="checkbox" id="vLive"></label>
+          <div style="padding:8px 16px 4px;text-align:right"><button class="pri" id="saveVis" type="button">Speichern</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script src="core.js"></script>
+<script>
+"use strict";
+const LABELS = {
+  durch_before: ["Durchfahrt", "zu vor dem Zug"], durch_before_long: ["Durchfahrt Fernzug", "zu vor dem Zug"],
+  durch_after: ["Durchfahrt", "auf nach dem Zug"],
+  ab_before: ["Abfahrt in Nersingen", "zu vor dem Zug (steht am Bahnsteig)"], ab_after: ["Abfahrt in Nersingen", "auf nach dem Zug"],
+  an_before: ["Ankunft in Nersingen", "zu vor dem Zug"], an_after: ["Ankunft in Nersingen", "auf nach dem Zug"],
+};
+const fmtS = s => { if (s == null || isNaN(s)) return "–"; const sg = s < 0 ? "−" : ""; s = Math.abs(Math.round(s)); return sg + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+const devTxt = d => d == null ? "" : (d >= 0 ? "+" : "−") + (Math.abs(d) < 60 ? Math.round(Math.abs(d)) + " s" : fmtS(Math.abs(d)));
+const hms = ts => new Date(ts * 1000).toLocaleTimeString("de-DE", {timeZone: "Europe/Berlin"});
+const dayHms = ts => new Date(ts * 1000).toLocaleString("de-DE", {timeZone: "Europe/Berlin", weekday: "short", hour: "2-digit", minute: "2-digit"});
+function toast(t) { const e = $("toast"); e.textContent = t; e.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => e.hidden = true, 2200); }
+
+let tab = "messen";
+let xid = (() => { try { return localStorage.getItem("nsAdminX") || "elchinger"; } catch (e) { return "elchinger"; } })();
+let analysis = null, reportsData = [], lastId = null;
+
+function renderSel() {
+  $("xsel").innerHTML = CROSSINGS.map(c => `<button data-x="${c.id}" class="${c.id === xid ? "on" : ""}">${c.short}</button>`).join("");
+  $("tabs").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  $("messen").style.display = tab === "messen" ? "flex" : "none";
+  $("auswertung").hidden = tab !== "auswertung"; $("auswertung").style.display = tab === "auswertung" ? "flex" : "none";
+  $("title").textContent = tab === "messen" ? "Messen an der Schranke" : "Auswertung & Modell";
+}
+$("xsel").addEventListener("click", e => { const b = e.target.closest("[data-x]"); if (!b) return; xid = b.dataset.x; try { localStorage.setItem("nsAdminX", xid); } catch (e2) {} renderSel(); renderMessen(); renderAnalysis(); });
+$("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (!b) return; tab = b.dataset.tab; renderSel(); if (tab === "auswertung") loadAnalysis(); });
+
+// ---------- Messen ----------
+function mState() { try { return JSON.parse(localStorage.getItem("nsMess_" + xid) || "{}"); } catch (e) { return {}; } }
+function setMState(s) { try { localStorage.setItem("nsMess_" + xid, JSON.stringify(s)); } catch (e) {} }
+
+function renderMessen() {
+  const now = new Date(), s = mState();
+  const z = closedAt(xid, now), n = nextAt(xid, now), snap = snapshotFor(xid, now);
+  $("modelTxt").textContent = !loaded ? "lädt …" : z ? `zu bis ~${hm(z.closeTo)}:${String(z.closeTo.getSeconds()).padStart(2, "0")}`
+    : n ? `offen · zu ab ~${hm(n.closeFrom)}:${String(n.closeFrom.getSeconds()).padStart(2, "0")}` : "offen · kein Zug in Sicht";
+  $("trainTxt").innerHTML = snap ? `<span class="badge">${esc(snap.name)}</span><span class="mono" style="font-weight:700">${hm(new Date(snap.pass))}</span>` : "–";
+  const big = $("big");
+  big.className = "big " + (s.zu ? "zu" : "auf");
+  $("bigK").textContent = s.zu ? "SCHRANKE IST ZU SEIT " + fmtS((Date.now() - s.since) / 1000) : "SCHRANKE IST AUF";
+  $("bigL").textContent = s.zu ? "Jetzt AUF" : "Jetzt ZU";
+  $("bigS").textContent = s.zu ? "tippen, sobald sie hochgeht" : "tippen, sobald sie runtergeht";
+}
+
+async function measure(state) {
+  const snap = snapshotFor(xid, new Date());
+  const res = await postJSON("/api/admin/report", {crossing: xid, state, snapshot: snap});
+  if (res.status === 401) { location.reload(); return; }
+  if (!res.ok) { toast("Speichern hat nicht geklappt"); return false; }
+  lastId = res.data.id;
+  if (navigator.vibrate) navigator.vibrate(40);
+  toast(state === "zug" ? "Zug gemerkt" : `${state.toUpperCase()} gemerkt` + (snap ? "" : " – kein Zug in der Nähe"));
+  loadToday();
+  return true;
+}
+$("big").addEventListener("click", async () => {
+  const s = mState(), next = s.zu ? "auf" : "zu";
+  if (await measure(next)) { setMState({zu: next === "zu", since: Date.now()}); renderMessen(); }
+});
+$("zug").addEventListener("click", () => measure("zug"));
+$("undo").addEventListener("click", async () => {
+  if (!lastId) { toast("Nichts zum Rückgängigmachen"); return; }
+  await fetch("/api/admin/report/" + lastId, {method: "DELETE"});
+  lastId = null; setMState({}); renderMessen(); loadToday(); toast("Gelöscht");
+});
+
+async function loadToday() {
+  const r = await fetch("/api/admin/reports?days=1", {cache: "no-store"});
+  if (r.status === 401) { location.reload(); return; }
+  const d = await r.json();
+  const list = d.reports.filter(x => x.source === "admin").slice(0, 12);
+  $("today").innerHTML = list.length ? list.map(x => {
+    const name = CROSSINGS.find(c => c.id === x.crossing)?.short || x.crossing;
+    const col = x.dev == null ? "var(--dim)" : Math.abs(x.dev) <= 60 ? "var(--green)" : Math.abs(x.dev) <= 120 ? "var(--amber)" : "var(--redtxt)";
+    const dotc = x.state === "zu" ? "var(--red)" : x.state === "auf" ? "var(--green)" : "var(--blue)";
+    const tr = x.train ? ` · ${esc(x.train.name)} ${x.train.westbound ? "→ Ulm" : "→ Augsb."}` : " · kein Zug";
+    return `<div class="row"><span class="mono" style="font-weight:700;font-size:13px;width:64px">${hms(x.ts)}</span><span class="dot" style="background:${dotc}"></span>
+      <span style="flex:1;font-size:13px">${name} ${x.state === "zug" ? "Zug drüber" : x.state}${tr}</span>
+      <span class="mono" style="font-size:12px;font-weight:700;color:${col}">${devTxt(x.dev)}</span></div>`;
+  }).join("") : `<div class="row muted">noch nichts</div>`;
+}
+
+// ---------- Auswertung ----------
+async function loadAnalysis() {
+  const [a, r] = await Promise.all([fetch("/api/admin/analysis", {cache: "no-store"}), fetch("/api/admin/reports?days=14", {cache: "no-store"})]);
+  if (a.status === 401) { location.reload(); return; }
+  analysis = await a.json(); reportsData = (await r.json()).reports;
+  const v = analysis.config.visitors;
+  $("vConfirm").value = v.confirm; $("vWindow").value = v.window; $("vRate").value = v.rate; $("vLive").checked = !!v.live;
+  renderAnalysis();
+}
+
+function renderAnalysis() {
+  if (!analysis) return;
+  const A = analysis.crossings[xid], c = CROSSINGS.find(x => x.id === xid);
+  const pct = A.hit == null ? "–" : Math.round(A.hit * 100) + " %";
+  $("kpis").innerHTML = `
+    <div class="card kpi"><div class="muted" style="font-size:12px">Treffer (±60 s, 7 Tage)</div><div class="v" style="color:var(--green)">${pct}</div><div class="n">${c.short}</div></div>
+    <div class="card kpi"><div class="muted" style="font-size:12px">mittlere Abweichung</div><div class="v">${A.meanDev == null ? "–" : Math.round(A.meanDev) + " s"}</div><div class="n">7 Tage</div></div>
+    <div class="card kpi"><div class="muted" style="font-size:12px">Meldungen (60 Tage)</div><div class="v">${A.counts.admin + A.counts.visitor}</div><div class="n">Jan ${A.counts.admin} · Besucher ${A.counts.visitor} (${A.counts.visitorConfirmed} bestätigt)</div></div>`;
+  $("paramTitle").textContent = "Schließzeiten " + c.name;
+  $("params").innerHTML = Object.entries(LABELS).map(([k, [fall, what]]) => {
+    const p = A.params[k] || {}, model = p.model;
+    let meas = `<span class="muted">–</span>`, bar = "", act = `<span class="muted" style="font-size:12px">${p.n ? "zu wenig Daten" : ""}</span>`;
+    if (p.n) {
+      const col = p.suggest == null ? "var(--muted)" : Math.abs(p.median - model) <= 10 ? "var(--green)" : Math.abs(p.median - model) <= 30 ? "var(--amber)" : "var(--redtxt)";
+      meas = `<span class="mono" style="font-weight:700;color:${col}">${fmtS(p.median)}</span> <span class="muted" style="font-size:12px">n=${p.n}</span>`;
+      const max = Math.max(model, p.p75, 60) * 1.3, pc = x => Math.max(0, Math.min(100, x / max * 100));
+      bar = `<div class="bar"><i style="left:${pc(p.p25)}%;width:${Math.max(2, pc(p.p75) - pc(p.p25))}%"></i><b style="left:${pc(p.median)}%"></b></div>`;
+      if (p.suggest != null) act = p.suggest === model ? `<span style="font-size:12px;color:var(--green)">passt</span>` : `<button class="go" data-sug="${k}" data-v="${p.suggest}">${p.suggest} s eintragen</button>`;
+    }
+    return `<tr><td><div style="font-weight:600">${fall}</div><div class="muted" style="font-size:12px">${what}</div></td>
+      <td><input type="number" min="0" max="900" data-p="${k}" value="${model}" aria-label="${fall} ${what}"> <span class="muted" style="font-size:12px">${fmtS(model)}</span></td>
+      <td>${meas}</td><td>${bar}</td><td>${act}</td></tr>`;
+  }).join("");
+  // Punkte: Abweichung je Meldung, ±5 Min. Bereich
+  const devs = A.devs, t0 = devs.length ? devs[0].ts : 0, t1 = devs.length ? devs[devs.length - 1].ts : 1;
+  const y = d => 50 - Math.max(-300, Math.min(300, d)) / 300 * 46;
+  $("chart").innerHTML = `<div class="ok" style="top:${y(60)}%;height:${y(-60) - y(60)}%"></div><div class="z"></div>
+    <small style="top:2px">später</small><small style="bottom:2px">früher</small>` +
+    devs.map(d => `<span style="left:${t1 > t0 ? 2 + (d.ts - t0) / (t1 - t0) * 96 : 50}%;top:${y(d.dev)}%;background:${d.source === "admin" ? "var(--orange)" : "var(--blue)"}" title="${devTxt(d.dev)}"></span>`).join("") +
+    (devs.length ? "" : `<small style="top:45%;left:30%">noch keine Messungen</small>`);
+  // Meldungsliste
+  const list = reportsData.filter(r => r.crossing === xid).slice(0, 40);
+  $("reports").innerHTML = list.length ? list.map(r => {
+    const tag = r.ignored ? ["ignoriert", "var(--dim)", "#22242D"] : r.outlier ? ["Ausreißer", "var(--redtxt)", "rgba(255,59,48,.13)"]
+      : r.source === "admin" ? ["Jan", "var(--orange)", "rgba(255,138,61,.15)"] : r.confirmed ? ["bestätigt", "var(--green)", "rgba(61,220,132,.13)"] : ["einzeln", "var(--muted)", "#22242D"];
+    const dotc = r.state === "zu" ? "var(--red)" : r.state === "auf" ? "var(--green)" : "var(--blue)";
+    const meta = (r.source === "admin" ? "Jan" : "Besucher") + (r.train ? ` · ${esc(r.train.name)} ${r.train.westbound ? "→ Ulm" : "→ Augsb."}` : "") +
+      (r.dev != null ? ` · Modell ${devTxt(r.dev)}` : "") + (r.why ? ` · ${r.why}` : "");
+    return `<div class="row"><span class="dot" style="background:${dotc}"></span>
+      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">${r.state === "zug" ? "Zug drüber" : r.state} · ${dayHms(r.ts)}</div><div class="muted" style="font-size:12px">${meta}</div>
+      <div style="display:flex;gap:12px;margin-top:4px"><button class="link" data-ign="${r.id}" data-v="${r.ignored ? 0 : 1}">${r.ignored ? "wieder zählen" : "ignorieren"}</button><button class="link" data-del="${r.id}">löschen</button></div></div>
+      <span class="tag" style="color:${tag[1]};background:${tag[2]}">${tag[0]}</span></div>`;
+  }).join("") : `<div class="row muted">noch keine Meldungen</div>`;
+}
+
+$("params").addEventListener("click", e => {
+  const b = e.target.closest("[data-sug]"); if (!b) return;
+  $("params").querySelector(`input[data-p="${b.dataset.sug}"]`).value = b.dataset.v;
+});
+$("allSug").addEventListener("click", () => $("params").querySelectorAll("[data-sug]").forEach(b => b.click()));
+async function saveConfig(body, msg) {
+  const res = await postJSON("/api/admin/config", body, "PUT");
+  if (res.status === 401) { location.reload(); return; }
+  toast(res.ok ? msg : "Speichern hat nicht geklappt");
+  if (res.ok) { await loadConfig(); refresh(); loadAnalysis(); }
+}
+$("saveParams").addEventListener("click", () => {
+  const vals = {}; $("params").querySelectorAll("input[data-p]").forEach(i => vals[i.dataset.p] = +i.value);
+  saveConfig({crossings: {[xid]: vals}}, "Gespeichert – gilt jetzt für alle");
+});
+$("saveVis").addEventListener("click", () => saveConfig({visitors: {confirm: +$("vConfirm").value, window: +$("vWindow").value, rate: +$("vRate").value, live: $("vLive").checked}}, "Gespeichert"));
+$("reports").addEventListener("click", async e => {
+  const ign = e.target.closest("[data-ign]"), del = e.target.closest("[data-del]");
+  if (ign) await postJSON(`/api/admin/report/${ign.dataset.ign}/ignore`, {ignored: ign.dataset.v === "1"});
+  else if (del) { if (!confirm("Meldung löschen?")) return; await fetch("/api/admin/report/" + del.dataset.del, {method: "DELETE"}); }
+  else return;
+  loadAnalysis();
+});
+
+// ---------- Start ----------
+window.onData = renderMessen;
+renderSel();
+loadConfig().then(refresh);
+loadToday();
+setInterval(refresh, 30000);
+setInterval(renderMessen, 1000);
+</script>
+</body>
+</html>
