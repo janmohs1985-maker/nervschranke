@@ -169,7 +169,7 @@ function parse(raw) {
       const pass = new Date(+dep + profileTime(along, total, (arr - dep) / 1000, mode) * 1000);
       // gleicher Zug aus einer zweiten Datenquelle (auch unter anderem Namen, z. B. „DRF“ und „WB 962“):
       // zwei verschiedene Züge können nicht innerhalb einer Minute in dieselbe Richtung über den Übergang fahren
-      if (P[c.id].some(p => (p.name === name && Math.abs(p.pass - pass) < 120000) ||
+      if (P[c.id].some(p => (p.name === name && p.westbound === westbound && Math.abs(p.pass - pass) < 120000) ||
                             (p.westbound === westbound && Math.abs(p.pass - pass) < 60000))) continue;
       // Geschätzte Schließzeiten. Hält der Zug in Nersingen und fährt danach über den Übergang,
       // ist die Schranke schon zu, während er am Bahnsteig steht (beobachtet 4.10.2026: ca. 4 Min. vorher).

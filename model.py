@@ -213,7 +213,7 @@ def compute(raw, rt, model):
             seen[c["id"]].add(trip)
             mode = "ab" if from_here else "an" if to_here else None
             pas = dep + profile_time(along, total, (arr - dep) / 1000, mode) * 1000
-            if any((p["name"] == name and abs(p["pass"] - pas) < 120000) or
+            if any((p["name"] == name and p["westbound"] == westbound and abs(p["pass"] - pas) < 120000) or
                    (p["westbound"] == westbound and abs(p["pass"] - pas) < 60000) for p in P[c["id"]]):
                 continue
             m = model[c["id"]]
