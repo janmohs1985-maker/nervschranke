@@ -67,6 +67,35 @@ main{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:22px 16px
 .imsg{min-height:0;margin-top:10px;font-size:13px;color:var(--amber)}
 .imsg:empty{display:none}
 .imsg.ok{color:var(--green)}
+[hidden]{display:none!important}
+.offer{margin-top:12px;padding:14px;border-radius:16px;background:#132519;border:1px solid rgba(61,220,132,.35);text-align:left}
+.offer .ot{font-size:16px;font-weight:700}
+.offer .os{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.4}
+.warnline{font-size:12px;color:var(--amber);margin-top:8px}
+.offer .ob{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.offer .ob button{padding:12px;border-radius:12px;font-weight:700;font-size:14px}
+.offer .no{background:rgba(255,255,255,.08);color:var(--muted)}
+.offer .yes{background:var(--green);color:var(--bg)}
+.mm{position:fixed;inset:0;z-index:1100;background:var(--bg)}
+.mmin{max-width:520px;margin:0 auto;height:100%;box-sizing:border-box;padding:calc(36px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
+.mmend{align-items:center;justify-content:center;text-align:center}
+.mm .ok{width:84px;height:84px;border-radius:50%;background:rgba(61,220,132,.16);display:grid;place-items:center}
+.mm .done{width:100%;max-width:320px;margin-top:20px;padding:15px;border-radius:16px;background:var(--text);color:var(--bg);font-weight:700;font-size:15px}
+.mm .cancel{padding:12px;border-radius:14px;color:var(--dim);font-size:14px}
+.mm .ss{font-size:15px;color:var(--muted);line-height:1.45}
+.mmk{font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--orange)}
+.mmt{font-size:24px;font-weight:700}
+.mmsteps{display:flex;gap:6px}
+.mmsteps span{flex:1;text-align:center;padding:8px 4px;border-radius:10px;font-size:12px;font-weight:600;border:1px solid var(--stroke);color:var(--dim)}
+.mmsteps span.on{background:var(--card2);color:var(--text)}
+.mmsince{text-align:center;font-family:var(--mono);color:var(--muted)}
+.mmbig{height:190px;border-radius:28px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+.mmbig span{font-size:13px;font-weight:700;letter-spacing:.12em;opacity:.8}
+.mmbig b{font-size:36px;letter-spacing:-.02em}
+.mmbig.zug{background:#1B2440;border:2px solid rgba(122,162,255,.6)}
+.mmbig.auf{background:#132519;border:2px solid rgba(61,220,132,.55)}
+.mmbig:active{transform:scale(.98)}
+.mm .msg{min-height:18px;font-size:13px;color:var(--amber);text-align:center}
 .sheet-bg{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55)}
 .sheet{position:fixed;z-index:1001;left:0;right:0;bottom:0;margin:0 auto;max-width:520px;background:var(--card);border-radius:28px 28px 0 0;
   border-top:1px solid rgba(255,255,255,.08);padding:12px 18px calc(26px + env(safe-area-inset-bottom));animation:up .3s ease-out}
@@ -254,6 +283,12 @@ footer .legal a{color:var(--muted)}
       <button class="inb auf" id="inAuf" type="button"><span class="ld"></span>Ist AUF</button>
     </div>
     <div class="imsg" id="inMsg" role="status"></div>
+    <div class="offer" id="inOffer" hidden>
+      <div class="ot">Hilfst du kurz beim Messen?</div>
+      <div class="os">Tipp einfach, wenn der Zug über den Übergang fährt und wenn die Schranke aufgeht. So wird die Vorhersage für alle genauer.</div>
+      <div class="warnline">Nur zu Fuß, mit dem Rad oder als Beifahrer – nicht am Steuer.</div>
+      <div class="ob"><button type="button" class="no" data-mm-no>Nein danke</button><button type="button" class="yes" data-mm-yes>Mach ich</button></div>
+    </div>
   </section>
 
   <section class="band" id="band" aria-label="Gleisband mit Zügen und Schranken"></section>
@@ -313,10 +348,36 @@ footer .legal a{color:var(--muted)}
     <div class="ok"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></div>
     <div class="st" style="text-align:center">Danke, Nachbar!</div>
     <div class="ss" style="text-align:center" id="doneT"></div>
+    <div class="offer" id="doneOffer" hidden>
+      <div class="ot">Hilfst du kurz beim Messen?</div>
+      <div class="os">Tipp einfach, wenn der Zug über den Übergang fährt und wenn die Schranke aufgeht. So wird die Vorhersage für alle genauer.</div>
+      <div class="warnline">Nur zu Fuß, mit dem Rad oder als Beifahrer – nicht am Steuer.</div>
+      <div class="ob"><button type="button" class="no" data-mm-no>Nein danke</button><button type="button" class="yes" data-mm-yes>Mach ich</button></div>
+    </div>
     <button class="done" id="doneOk" type="button">Fertig</button>
   </div>
 </div>
 
+<div class="mm" id="mm" role="dialog" aria-modal="true" aria-labelledby="mmTitle" hidden>
+  <div id="mmRun" class="mmin">
+    <div class="mmk">MITMESSEN · <span id="mmX"></span></div>
+    <div class="mmt" id="mmTitle"></div>
+    <div class="mmsteps" id="mmSteps"><span class="on">gemeldet: zu</span><span>Zug drüber</span><span>Schranke auf</span></div>
+    <div class="warnline">Nur zu Fuß, mit dem Rad oder als Beifahrer – nicht am Steuer.</div>
+    <div style="flex:1"></div>
+    <div class="mmsince" id="mmSince"></div>
+    <button type="button" class="mmbig zug" id="mmBig"><span id="mmK"></span><b id="mmL"></b></button>
+    <div class="msg" id="mmMsg" role="status"></div>
+    <button type="button" class="cancel" id="mmCancel">Abbrechen</button>
+  </div>
+  <div id="mmDone" class="mmin mmend" hidden>
+    <div class="ok"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></div>
+    <div class="mmt">Super, danke!</div>
+    <div class="ss" id="mmSum"></div>
+    <div class="ss" style="margin-top:10px">Deine Messung hilft, dass die Vorhersage hier bald genauer wird.</div>
+    <button type="button" class="done" id="mmOk">Fertig</button>
+  </div>
+</div>
 <script src="/static/leaflet.js"></script>
 <script src="core.js"></script>
 <script>
@@ -686,11 +747,52 @@ async function sendReport(state, where) {
       (more > 0 ? `Sobald ${more === 1 ? "noch jemand" : more + " weitere"} dasselbe meldet, sehen es alle.` : "Alle sehen es jetzt.");
     if (where === "card") { msg.className = "imsg ok"; msg.textContent = "Danke! " + txt; }
     else { $("doneT").textContent = txt; openSheet("done"); }
+    // Wer „zu“ meldet, steht an der Schranke: zum Mitmessen einladen (Zug drüber, Schranke auf)
+    if (state === "zu") offerMeasure(repX, +at, where);
     render();
   } else {
     msg.textContent = res.status === 429 ? "Du hast gerade schon gemeldet – in einer Minute wieder." : "Melden klappt gerade nicht. Später nochmal?";
   }
 }
+// ---------- Mitmessen ----------
+let MM = null;   // {x, t0, step, tZug}
+function offerMeasure(x, t0, where) {
+  const box = where === "card" ? $("inOffer") : $("doneOffer");
+  box.hidden = false;
+  box.querySelector("[data-mm-yes]").onclick = () => { box.hidden = true; if (where !== "card") closeSheet(); startMeasure(x, t0); };
+  box.querySelector("[data-mm-no]").onclick = () => { box.hidden = true; };
+}
+function startMeasure(x, t0) {
+  MM = {x, t0, step: 0, tZug: null};
+  $("mm").hidden = false; $("mmDone").hidden = true; $("mmRun").hidden = false;
+  $("mmX").textContent = CROSSINGS.find(c => c.id === x).name.toUpperCase();
+  renderMeasure();
+}
+function renderMeasure() {
+  if (!MM) return;
+  const s = MM.step;
+  $("mmTitle").textContent = s === 0 ? "Tipp, wenn der Zug über den Übergang fährt" : "Und jetzt, wenn die Schranke hochgeht";
+  $("mmK").textContent = s === 0 ? "SCHRITT 1 VON 2" : "SCHRITT 2 VON 2";
+  $("mmL").textContent = s === 0 ? "Zug fährt drüber" : "Schranke geht auf";
+  $("mmBig").className = "mmbig " + (s === 0 ? "zug" : "auf");
+  [...document.querySelectorAll("#mmSteps span")].forEach((e, i) => e.classList.toggle("on", i <= s));
+  $("mmMsg").textContent = "";
+}
+setInterval(() => { if (MM && !$("mm").hidden) $("mmSince").textContent = "zu seit " + mmss(Date.now() - MM.t0); }, 1000);
+$("mmBig").addEventListener("click", async () => {
+  if (!MM) return;
+  const state = MM.step === 0 ? "zug" : "auf", t = Date.now();
+  const res = await postJSON("/api/report", {crossing: MM.x, state, exact: true, device: deviceId, snapshot: snapshotFor(MM.x, nowD())});
+  if (!res.ok && res.status !== 429) { $("mmMsg").textContent = res.status === 409 ? "Das ging nicht – bitte erst „Ist ZU“ melden." : "Speichern hat nicht geklappt, nochmal?"; return; }
+  if (navigator.vibrate) navigator.vibrate(40);
+  if (MM.step === 0) { MM.tZug = t; MM.step = 1; renderMeasure(); return; }
+  const zu = mmss(t - MM.t0), zug = MM.tZug ? mmss(MM.tZug - MM.t0) : null, after = MM.tZug ? Math.round((t - MM.tZug) / 1000) : null;
+  $("mmSum").textContent = `Zu war sie mindestens ${zu} Min.` + (zug ? ` – der Zug kam ${zug} nach deiner Meldung, ${after} s später ging sie auf.` : "");
+  $("mmRun").hidden = true; $("mmDone").hidden = false; MM = null;
+});
+$("mmCancel").addEventListener("click", () => { MM = null; $("mm").hidden = true; });
+$("mmOk").addEventListener("click", () => { $("mm").hidden = true; });
+
 $("fab").addEventListener("click", () => openSheet("ask"));
 $("inZu").addEventListener("click", () => sendReport("zu", "card"));
 $("inAuf").addEventListener("click", () => sendReport("auf", "card"));

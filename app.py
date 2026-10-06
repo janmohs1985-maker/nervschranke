@@ -48,7 +48,7 @@ DEFAULT_CONFIG = {
     "visitors": {"confirm": 2, "window": 90, "rate": 60, "live": True},
     # Selbst lernen aus Jans genauen Messungen: Halbwertszeit (Tage) und „Vorwissen“ (so viele Messungen wiegt
     # der manuelle Wert – mit wenigen Messungen bleibt es nah daran, mit vielen folgt es den Messungen)
-    "learn": {"auto": True, "halflife": 30, "prior": 4},
+    "learn": {"auto": True, "halflife": 30, "prior": 4, "visitors": True, "visitorWeight": 0.3},
 }
 PARAM_KEYS = tuple(DEFAULT_CONFIG["crossings"]["elchinger"].keys())
 
@@ -472,20 +472,37 @@ def clean_snapshot(s):
 async def report(request: Request):
     body = await request.json()
     crossing, state = body.get("crossing"), body.get("state")
-    if crossing not in CROSSINGS or state not in ("zu", "auf"):
+    exact = bool(body.get("exact"))
+    if crossing not in CROSSINGS or state not in ("zu", "auf", "zug") or (state == "zug" and not exact):
         raise HTTPException(400, "ungültig")
     device = str(body.get("device", ""))[:40]
     ip = iphash(request)
     cfg = get_config()["visitors"]
-    # pro Gerät 1 Meldung je `rate` Sekunden; pro Anschluss (IP) höchstens 5, damit z. B. eine Familie
-    # im selben WLAN sich gegenseitig bestätigen kann, aber niemand die Seite zuspammt
-    since = time.time() - cfg["rate"]
-    same_dev = device and db("SELECT 1 FROM reports WHERE source='visitor' AND ts > ? AND device=?", (since, device), one=True)
-    same_ip = db("SELECT COUNT(*) AS n FROM reports WHERE source='visitor' AND ts > ? AND iphash=?", (since, ip), one=True)["n"]
-    if same_dev or same_ip >= 5 or (not device and same_ip >= 1):
-        raise HTTPException(429, "Du hast gerade schon gemeldet.")
-    db("INSERT INTO reports(ts, crossing, state, source, device, iphash, snapshot) VALUES(?,?,?,?,?,?,?)",
-       (time.time(), crossing, state, "visitor", device, ip, clean_snapshot(body.get("snapshot"))))
+    now = time.time()
+    if exact:
+        # Mitmessen nach einer Meldung: „Zug fährt drüber“ / „Schranke geht auf“ – nur mit Geräte-Kennung,
+        # nur nach eigener „zu“-Meldung an diesem Übergang (max. 20 Min. her), jeder Schritt einmal
+        if state == "zu" or not device:
+            raise HTTPException(400, "ungültig")
+        start = db("SELECT ts FROM reports WHERE source='visitor' AND exact=0 AND state='zu' AND device=? AND crossing=? AND ts > ? "
+                   "ORDER BY ts DESC LIMIT 1", (device, crossing, now - 1200), one=True)
+        if not start:
+            raise HTTPException(409, "Bitte zuerst melden, dass die Schranke zu ist.")
+        if db("SELECT 1 FROM reports WHERE source='visitor' AND exact=1 AND state=? AND device=? AND ts > ?",
+              (state, device, start["ts"]), one=True):
+            raise HTTPException(429, "Schon gemessen.")
+    else:
+        # pro Gerät 1 Meldung je `rate` Sekunden; pro Anschluss (IP) höchstens 5, damit z. B. eine Familie
+        # im selben WLAN sich gegenseitig bestätigen kann, aber niemand die Seite zuspammt
+        since = now - cfg["rate"]
+        same_dev = device and db("SELECT 1 FROM reports WHERE source='visitor' AND exact=0 AND ts > ? AND device=?", (since, device), one=True)
+        same_ip = db("SELECT COUNT(*) AS n FROM reports WHERE source='visitor' AND exact=0 AND ts > ? AND iphash=?", (since, ip), one=True)["n"]
+        if same_dev or same_ip >= 5 or (not device and same_ip >= 1):
+            raise HTTPException(429, "Du hast gerade schon gemeldet.")
+    db("INSERT INTO reports(ts, crossing, state, source, device, iphash, snapshot, exact) VALUES(?,?,?,?,?,?,?,?)",
+       (now, crossing, state, "visitor", device, ip, clean_snapshot(body.get("snapshot")), 1 if exact else 0))
+    if exact:
+        learn_invalidate()
     # Besucher-Meldungen höchstens 12 Monate aufheben (so steht es in der Datenschutzerklärung)
     db("DELETE FROM reports WHERE source='visitor' AND ts < ?", (time.time() - 365 * 86400,))
     return live()
@@ -514,7 +531,7 @@ def live(request: Request = None):
         for k in [k for k, v in _active.items() if v < now - 60]:
             _active.pop(k, None)
         note_peak(len(_active), now)
-    rows = db("SELECT * FROM reports WHERE ts > ? AND ignored=0 AND state IN ('zu','auf') ORDER BY ts", (now - 180,))
+    rows = db("SELECT * FROM reports WHERE ts > ? AND ignored=0 AND exact=0 AND state IN ('zu','auf') ORDER BY ts", (now - 180,))
     conf = confirmed_ids(rows, cfg)
     out = {}
     for c in CROSSINGS:
@@ -684,28 +701,38 @@ def learned(cfg=None):
         return _learn_cache[1]
     cfg = cfg or get_config()
     lc = cfg["learn"]
-    rows = db("SELECT * FROM reports WHERE source='admin' AND ignored=0 AND ts > ? ORDER BY ts", (time.time() - 365 * 86400,))
+    # Jans Messungen voll; Besucher-Messungen (Mitmessen) nur wenn erlaubt, mit kleinerem Gewicht
+    # und nur, wenn sie plausibel sind (höchstens 3 Min. neben der Schätzung)
+    rows = db("SELECT * FROM reports WHERE ignored=0 AND exact=1 AND ts > ? AND (source='admin' OR source='visitor') ORDER BY ts",
+              (time.time() - 365 * 86400,))
     real = actual_passes(rows)
     vals = {}
     for r in rows:
+        vis = r["source"] == "visitor"
+        if vis and not lc.get("visitors", True):
+            continue
         e = evaluate(r, cfg, real)
-        if e["exact"] and not e["outlier"] and e["param"] in PARAM_KEYS and e["measured"] is not None:
-            vals.setdefault((r["crossing"], e["param"]), []).append((e["measured"], r["ts"]))
+        if not e["exact"] or e["outlier"] or e["param"] not in PARAM_KEYS or e["measured"] is None:
+            continue
+        if vis and (e["dev"] is None or abs(e["dev"]) > 180):
+            continue
+        w = float(lc.get("visitorWeight", 0.3)) if vis else 1.0
+        vals.setdefault((r["crossing"], e["param"]), []).append((e["measured"], r["ts"], w, vis))
     out = {c: {} for c in CROSSINGS}
     now = time.time()
     for (c, k), lst in vals.items():
-        v = [x for x, _ in lst]
+        v = [x for x, *_ in lst]
         if len(v) >= 5:  # Ausreißer: mehr als 3 × MAD (mind. 10 s) vom Median weg
             med = statistics.median(v)
             mad = max(10.0, statistics.median([abs(x - med) for x in v]))
-            lst = [(x, t) for x, t in lst if abs(x - med) <= 3 * mad] or lst
-        pairs = [(x, 0.5 ** ((now - t) / 86400 / lc["halflife"])) for x, t in lst]
+            lst = [m for m in lst if abs(m[0] - med) <= 3 * mad] or lst
+        pairs = [(x, w * 0.5 ** ((now - t) / 86400 / lc["halflife"])) for x, t, w, _ in lst]
         W = sum(w for _, w in pairs)
         manual = cfg["crossings"][c][k]
         wmed = _wmedian(pairs)
         est = (W * wmed + lc["prior"] * manual) / (W + lc["prior"])
         out[c][k] = {"value": int(round(max(0, min(900, est)))), "n": len(lst), "conf": W / (W + lc["prior"]),
-                     "median": wmed}
+                     "median": wmed, "nVisitor": sum(1 for m in lst if m[3])}
     _learn_cache[0], _learn_cache[1] = time.time() + 60, out
     return out
 
@@ -856,6 +883,10 @@ async def admin_config(request: Request):
     for k, lo, hi in (("halflife", 3, 365), ("prior", 1, 50)):
         if isinstance(lb.get(k), (int, float)) and lo <= lb[k] <= hi:
             cfg["learn"][k] = int(lb[k])
+    if isinstance(lb.get("visitors"), bool):
+        cfg["learn"]["visitors"] = lb["visitors"]
+    if isinstance(lb.get("visitorWeight"), (int, float)) and 0 <= lb["visitorWeight"] <= 1:
+        cfg["learn"]["visitorWeight"] = float(lb["visitorWeight"])
     save_config(cfg)
     learn_invalidate()
     return cfg

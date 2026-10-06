@@ -194,6 +194,8 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
           <label class="set">Automatisch lernen <input type="checkbox" id="lAuto"></label>
           <label class="set">Messung zählt nach Tagen nur noch halb <input type="number" id="lHalf" min="3" max="365"></label>
           <label class="set">Manueller Wert zählt wie Messungen <input type="number" id="lPrior" min="1" max="50"></label>
+          <label class="set">Besucher-Messungen mitlernen <input type="checkbox" id="lVis"></label>
+          <label class="set">Gewicht einer Besucher-Messung (1 = wie deine) <input type="number" id="lVisW" min="0" max="1" step="0.1"></label>
           <div style="padding:8px 16px 4px;text-align:right"><button class="pri" id="saveLearn" type="button">Speichern</button></div>
         </div>
         <div class="card" style="padding-bottom:10px">
@@ -357,7 +359,7 @@ async function loadAnalysis() {
   analysis = await a.json(); reportsData = (await r.json()).reports;
   const v = analysis.config.visitors;
   $("vConfirm").value = v.confirm; $("vWindow").value = v.window; $("vRate").value = v.rate; $("vLive").checked = !!v.live;
-  const L = analysis.config.learn; $("lAuto").checked = !!L.auto; $("lHalf").value = L.halflife; $("lPrior").value = L.prior;
+  const L = analysis.config.learn; $("lAuto").checked = !!L.auto; $("lHalf").value = L.halflife; $("lPrior").value = L.prior; $("lVis").checked = L.visitors !== false; $("lVisW").value = L.visitorWeight ?? 0.3;
   renderAnalysis();
 }
 
@@ -384,7 +386,7 @@ function renderAnalysis() {
     return `<tr><td><div style="font-weight:600">${fall}</div><div class="muted" style="font-size:12px">${what}</div></td>
       <td><input type="number" min="0" max="900" data-p="${k}" value="${model}" aria-label="${fall} ${what}"> <span class="muted" style="font-size:12px">${fmtS(model)}</span></td>
       <td>${meas}</td><td>${bar}</td>
-      <td>${p.learned ? `<span class="mono" style="font-weight:700">${p.learned.value}</span> <span class="muted" style="font-size:12px">${Math.round(p.learned.conf * 100)} %</span>
+      <td>${p.learned ? `<span class="mono" style="font-weight:700">${p.learned.value}</span> <span class="muted" style="font-size:12px">${Math.round(p.learned.conf * 100)} %</span>${p.learned.nVisitor ? `<div class="muted" style="font-size:11px">davon ${p.learned.nVisitor} Besucher</div>` : ""}
         <div class="bar" style="width:70px;margin-top:4px"><i style="left:0;width:${Math.round(p.learned.conf * 100)}%;background:rgba(61,220,132,.6)"></i></div>` : `<span class="muted">–</span>`}</td>
       <td><span class="mono" style="font-weight:700;color:${p.effective !== model ? "var(--green)" : "var(--text)"}">${p.effective}</span></td>
       <td>${act}</td></tr>`;
@@ -400,7 +402,7 @@ function renderAnalysis() {
   const list = reportsData.filter(r => r.crossing === xid).slice(0, 40);
   $("reports").innerHTML = list.length ? list.map(r => {
     const tag = r.ignored ? ["ignoriert", "var(--dim)", "#22242D"] : r.outlier ? ["Ausreißer", "var(--redtxt)", "rgba(255,59,48,.13)"]
-      : r.source === "admin" ? ["Jan", "var(--orange)", "rgba(255,138,61,.15)"] : r.confirmed ? ["bestätigt", "var(--green)", "rgba(61,220,132,.13)"] : ["einzeln", "var(--muted)", "#22242D"];
+      : r.source === "admin" ? ["Jan", "var(--orange)", "rgba(255,138,61,.15)"] : r.exact ? ["mitgemessen", "var(--blue)", "rgba(122,162,255,.15)"] : r.confirmed ? ["bestätigt", "var(--green)", "rgba(61,220,132,.13)"] : ["einzeln", "var(--muted)", "#22242D"];
     const dotc = r.state === "zu" ? "var(--red)" : r.state === "auf" ? "var(--green)" : "var(--blue)";
     const meta = (r.source === "admin" ? "Jan" : "Besucher") + (r.train ? ` · ${esc(r.train.name)} ${r.train.westbound ? "→ Ulm" : "→ Augsb."}` : "") +
       (r.dev != null ? ` · ${r.exact ? "Modell " : ""}${resultTxt(r)}` : "") + (r.why ? ` · ${r.why}` : "");
@@ -426,7 +428,7 @@ $("saveParams").addEventListener("click", () => {
   const vals = {}; $("params").querySelectorAll("input[data-p]").forEach(i => vals[i.dataset.p] = +i.value);
   saveConfig({crossings: {[xid]: vals}}, "Gespeichert – gilt jetzt für alle");
 });
-$("saveLearn").addEventListener("click", () => saveConfig({learn: {auto: $("lAuto").checked, halflife: +$("lHalf").value, prior: +$("lPrior").value}}, "Gespeichert"));
+$("saveLearn").addEventListener("click", () => saveConfig({learn: {auto: $("lAuto").checked, halflife: +$("lHalf").value, prior: +$("lPrior").value, visitors: $("lVis").checked, visitorWeight: +$("lVisW").value}}, "Gespeichert"));
 $("saveVis").addEventListener("click", () => saveConfig({visitors: {confirm: +$("vConfirm").value, window: +$("vWindow").value, rate: +$("vRate").value, live: $("vLive").checked}}, "Gespeichert"));
 $("reports").addEventListener("click", async e => {
   const ign = e.target.closest("[data-ign]"), del = e.target.closest("[data-del]");
