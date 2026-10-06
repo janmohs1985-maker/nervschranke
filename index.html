@@ -274,7 +274,7 @@ footer .legal a{color:var(--muted)}
   <footer>
     Geschätzt aus Fahrplan und Verspätungen – die echten Schranken können früher schließen oder länger zu bleiben.
     Güterzüge fehlen in den Daten. In der Zugliste steht, woher die Zeit kommt: „DB live“ = Echtzeit der Deutschen Bahn,
-    „Echtzeit“ = Verspätungsdaten aus Transitous, „nur Fahrplan“ = keine Live-Daten. Zugdaten: <a href="https://transitous.org" target="_blank" rel="noopener">Transitous</a>
+    „Transitous live“ = Echtzeit aus Transitous, „Fahrplan“ = keine Live-Daten. Zugdaten: <a href="https://transitous.org" target="_blank" rel="noopener">Transitous</a>
     (<a href="https://transitous.org/sources/" target="_blank" rel="noopener">Datenquellen</a>),
     Echtzeit Nersingen/Ulm: Deutsche Bahn AG (<a href="https://developers.deutschebahn.com/" target="_blank" rel="noopener">DB API Marketplace</a>),
     Karte: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkende.
@@ -561,7 +561,7 @@ function renderTimeline(now) {
   $("ticks").innerHTML = [0, 1, 2, 3].map(i => `<span>${hm(new Date(+now + i * 600000))}</span>`).join("");
 }
 
-const SRC = {db: "DB live", rt: "Echtzeit", plan: "nur Fahrplan"};
+const SRC = {db: "DB live", rt: "Transitous live", plan: "Fahrplan"};
 function renderList(now) {
   const c = CROSSINGS.find(x => x.id === sel);
   $("listHead").textContent = "Züge " + c.at;
