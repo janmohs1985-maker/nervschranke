@@ -138,6 +138,7 @@ def compute(raw, rt, model, timing=None):
     P = {c["id"]: [] for c in CROSSINGS}
     seen = {c["id"]: set() for c in CROSSINGS}
     S, seen_seg, st_lons, station_dep = [], set(), [], {}
+    dropped = []   # aussortierte Durchfahrten (für die Prüfung, /api/diag)
     rail = [s for s in raw if s.get("mode") in RAIL_MODES]
     for s in rail:
         s["_rt"] = rt_shift(s, rt)
@@ -217,8 +218,14 @@ def compute(raw, rt, model, timing=None):
             seen[c["id"]].add(trip)
             mode = "ab" if from_here else "an" if to_here else None
             pas = dep + profile_time(along, total, (arr - dep) / 1000, mode) * 1000
-            if any((p["name"] == name and p["westbound"] == westbound and abs(p["pass"] - pas) < 120000) or
-                   (p["westbound"] == westbound and abs(p["pass"] - pas) < 60000) for p in P[c["id"]]):
+            # gleicher Zug aus zweiter Quelle unter anderem Namen (z. B. „DRF“ und „WB 962“): in derselben Richtung
+            # innerhalb einer Minute – außer beide haben verschiedene Zugnummern, dann sind es zwei Züge
+            # (beobachtet 7.10.2026: ICE 692 überholt die in Nersingen haltende RB 15 und fehlte an der Fichtenstraße)
+            twin = next((p for p in P[c["id"]] if p["westbound"] == westbound and (
+                (p["name"] == name and abs(p["pass"] - pas) < 120000) or
+                (abs(p["pass"] - pas) < 60000 and not (num and p["num"] and num != p["num"])))), None)
+            if twin:
+                dropped.append({"crossing": c["id"], "label": label, "pass": int(pas), "why": "gleicher Zug wie " + twin["label"]})
                 continue
             m = model[c["id"]]
             kase = "ab" if from_here else "an" if to_here else "durch"
@@ -240,6 +247,21 @@ def compute(raw, rt, model, timing=None):
                 S.append({"id": key, "trip": trip, "name": name, "num": num, "label": label, "kind": kind,
                           "westbound": westbound, "dep": dep, "arr": arr, "poly": s["polyline"], "plat": plat, "mode": mode})
 
+    # derselbe Zug (gleiche Nummer, gleiche Richtung) doppelt mit weit auseinanderliegenden Zeiten – nur der mit
+    # der besten Zeitangabe zählt (beobachtet 7.10.2026: ICE 9576 einmal nach Fahrplan 07:56 und einmal mit
+    # DB-Echtzeit +9 um 08:05; der „Geisterzug“ hielt die Waldstraße zu)
+    rank = {"db": 0, "rt": 1, "plan": 2}
+    for cid in P:
+        keep = []
+        for p in sorted(P[cid], key=lambda p: rank[p["src"]]):
+            twin = next((q for q in keep if p["num"] and q["num"] == p["num"] and q["westbound"] == p["westbound"] and
+                         abs(q["pass"] - p["pass"]) < 1800000), None)
+            if twin:
+                dropped.append({"crossing": cid, "label": p["label"], "pass": p["pass"],
+                                "why": f"doppelt ({p['src']}), gilt: {twin['src']} {round((twin['pass'] - p['pass']) / 60000)} Min. später"})
+                continue
+            keep.append(p)
+        P[cid] = keep
     # hält der Zug nach dem Übergang in Nersingen: Schranke bleibt bis zu seiner Abfahrt zu
     for cid, lst in P.items():
         for p in lst:
@@ -261,7 +283,16 @@ def compute(raw, rt, model, timing=None):
                 earliest = min(p["closeFrom"] for p in lst[:i])
                 if lst[i]["closeFrom"] < earliest:
                     lst[i]["closeFrom"] = earliest
+    # die Waldstraße liegt zwischen den beiden anderen: für einen Zug frühestens zu, wenn derselbe Zug an der
+    # Elchinger oder Fichtenstraße zugeht (beobachtet 7.10.2026: Wald zu, obwohl beide äußeren offen waren)
+    outer = {}
+    for cid in ("elchinger", "fichten"):
+        for p in P[cid]:
+            outer[p["id"]] = min(outer.get(p["id"], p["closeFrom"]), p["closeFrom"])
+    for p in P["wald"]:
+        if p["id"] in outer and p["closeFrom"] < outer[p["id"]]:
+            p["closeFrom"] = min(outer[p["id"]], p["closeTo"])
     for lst in P.values():
         lst.sort(key=lambda p: p["pass"])
     st_lons = [x for x in st_lons if x is not None]
-    return {"passes": P, "segments": S, "stationLon": (sum(st_lons) / len(st_lons)) if st_lons else None}
+    return {"passes": P, "segments": S, "stationLon": (sum(st_lons) / len(st_lons)) if st_lons else None, "dropped": dropped}

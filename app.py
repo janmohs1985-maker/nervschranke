@@ -14,7 +14,9 @@ import statistics
 import threading
 import time
 import xml.etree.ElementTree as ET
+import zlib
 
+import checks
 import model
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -100,6 +102,22 @@ CREATE TABLE IF NOT EXISTS visits (
   ref TEXT
 );
 CREATE INDEX IF NOT EXISTS visits_day ON visits(day);
+-- Verlauf der Rechnung (jede Minute, gepackt) und Auffälligkeiten der Plausibilitätsprüfung – nur Zugdaten
+CREATE TABLE IF NOT EXISTS history (ts INTEGER PRIMARY KEY, data BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS anomalies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts REAL NOT NULL,
+  key TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  crossing TEXT,
+  train TEXT,
+  detail TEXT,
+  at REAL,
+  raw INTEGER
+);
+CREATE INDEX IF NOT EXISTS anomalies_ts ON anomalies(ts);
+CREATE INDEX IF NOT EXISTS anomalies_key ON anomalies(key);
+CREATE TABLE IF NOT EXISTS rawdata (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, data BLOB NOT NULL);
 """)
 _db.commit()
 # exact=1: genauer Moment („geht gerade zu/auf“), exact=0: Beobachtung („ist schon zu/auf“, alle Besucher-Meldungen)
@@ -503,6 +521,19 @@ _state_cache = [0.0, None]
 _state_lock = asyncio.Lock()
 
 
+async def compute_state():
+    """Rechnung wie für die Seite. Liefert (Ergebnis, Transitous-Rohdaten, DB-Echtzeit)."""
+    now = int(time.time() // 60 * 60)
+    iso = lambda t: datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    body, _ = await trips_body(iso(now - 1800), iso(now + 5400))
+    rt = await realtime_data()
+    cfg = effective_config()
+    out = model.compute(json.loads(body), rt, cfg["crossings"], cfg["timing"])
+    out.update({"ok": True, "generated": int(time.time() * 1000), "db": bool(rt.get("ok")),
+                "visitors": cfg["visitors"], "model": cfg["crossings"]})
+    return out, body, rt
+
+
 @app.get("/api/state")
 async def state():
     if _state_cache[1] and _state_cache[0] > time.time():
@@ -510,17 +541,133 @@ async def state():
     async with _state_lock:
         if _state_cache[1] and _state_cache[0] > time.time():
             return Response(_state_cache[1], media_type="application/json", headers=NOCACHE)
-        now = int(time.time() // 60 * 60)
-        iso = lambda t: datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        body, _ = await trips_body(iso(now - 1800), iso(now + 5400))
-        rt = await realtime_data()
-        cfg = effective_config()
-        out = model.compute(json.loads(body), rt, cfg["crossings"], cfg["timing"])
-        out.update({"ok": True, "generated": int(time.time() * 1000), "db": bool(rt.get("ok")),
-                    "visitors": cfg["visitors"], "model": cfg["crossings"]})
+        out, _, _ = await compute_state()
+        out.pop("dropped", None)
         data = json.dumps(out, separators=(",", ":")).encode()
         _state_cache[0], _state_cache[1] = time.time() + 15, data
         return Response(data, media_type="application/json", headers=NOCACHE)
+
+# ---------------------------------------------------------------- Verlauf + Plausibilitätsprüfung
+# Jede Minute rechnet der Server einmal (auch ohne Besucher), merkt sich die Durchfahrten (3 Tage) und prüft
+# sie mit checks.py. Bei einer Auffälligkeit werden auch die Rohdaten (Transitous + DB) aufgehoben (14 Tage),
+# damit sich der Fall später genau nachrechnen lässt. Nur Zugdaten, nichts über Besucher.
+# Abrufbar ohne Anmeldung unter /api/diag (Auffälligkeiten), /api/diag/at (Stand zu einem Zeitpunkt),
+# /api/diag/raw/<id> (Rohdaten).
+HISTORY_DAYS, ANOMALY_DAYS = 3, 14
+_prev_state = [None]
+
+
+def _pack(obj):
+    return zlib.compress(json.dumps(obj, separators=(",", ":")).encode(), 6)
+
+
+def _unpack(blob):
+    return json.loads(zlib.decompress(blob))
+
+
+def _slim(out):
+    """Nur was zum Nachvollziehen nötig ist (ohne Fahrwege)."""
+    keep = ("label", "num", "westbound", "case", "src", "delay", "shift", "pass", "closeFrom", "closeTo", "stationDep", "id")
+    return {"generated": out["generated"], "db": out["db"], "dropped": out.get("dropped", []),
+            "passes": {c: [{k: p[k] for k in keep if k in p} for p in l] for c, l in out["passes"].items()}}
+
+
+def run_checks(out, body, rt):
+    now = out["generated"]
+    db("INSERT OR REPLACE INTO history(ts, data) VALUES(?, ?)", (now // 1000, _pack(_slim(out))))
+    found = checks.check(out, _prev_state[0], now)
+    _prev_state[0] = out
+    raw_id = None
+    for a in found:
+        # gleiche Auffälligkeit (Art, Übergang, Zug, Zeitpunkt auf 5 Min.) nur einmal
+        key = f"{a['kind']}|{a['crossing']}|{a['train']}|{(a['at'] or 0) // 300000}"
+        if db("SELECT 1 FROM anomalies WHERE key=? AND ts > ?", (key, now / 1000 - 3600), one=True):
+            continue
+        if raw_id is None:
+            with _db_lock:
+                raw_id = _db.execute("INSERT INTO rawdata(ts, data) VALUES(?, ?)",
+                                     (now / 1000, _pack({"trips": json.loads(body), "rt": rt}))).lastrowid
+                _db.commit()
+        db("INSERT INTO anomalies(ts, key, kind, crossing, train, detail, at, raw) VALUES(?,?,?,?,?,?,?,?)",
+           (now / 1000, key, a["kind"], a["crossing"], a["train"], a["detail"], (a["at"] or 0) / 1000 or None, raw_id))
+    if datetime.now(TZ).minute == 0:
+        db("DELETE FROM history WHERE ts < ?", (time.time() - HISTORY_DAYS * 86400,))
+        db("DELETE FROM anomalies WHERE ts < ?", (time.time() - ANOMALY_DAYS * 86400,))
+        db("DELETE FROM rawdata WHERE ts < ?", (time.time() - ANOMALY_DAYS * 86400,))
+
+
+async def watch_loop():
+    while True:
+        await asyncio.sleep(60 - time.time() % 60 + 5)   # kurz nach jeder vollen Minute
+        try:
+            out, body, rt = await compute_state()
+            await asyncio.to_thread(run_checks, out, body, rt)
+        except Exception as e:  # Prüfen darf nie die Seite stören
+            print("Prüfung fehlgeschlagen:", repr(e))
+
+
+@app.on_event("startup")
+async def start_watch():
+    asyncio.create_task(watch_loop())
+
+
+def _t(s):
+    """Zeitpunkt aus Unix-Sekunden oder ISO (ohne Zone = deutsche Zeit)."""
+    try:
+        return float(s)
+    except ValueError:
+        d = datetime.fromisoformat(s)
+        return (d if d.tzinfo else d.replace(tzinfo=TZ)).timestamp()
+
+
+def _local(ts):
+    return datetime.fromtimestamp(ts, TZ).strftime("%d.%m. %H:%M:%S") if ts else None
+
+
+@app.get("/api/diag")
+def diag(hours: float = 24, kind: str = ""):
+    """Auffälligkeiten der letzten Stunden (neueste zuerst)."""
+    since = time.time() - min(hours, ANOMALY_DAYS * 24) * 3600
+    rows = db("SELECT * FROM anomalies WHERE ts > ? AND (?='' OR kind=?) ORDER BY ts DESC LIMIT 500", (since, kind, kind))
+    count = {}
+    for r in rows:
+        count[r["kind"]] = count.get(r["kind"], 0) + 1
+    last = db("SELECT MAX(ts) AS t FROM history", one=True)
+    return JSONResponse({"lastCheck": _local(last["t"]) if last else None, "count": count,
+                         "anomalies": [{"id": r["id"], "seen": _local(r["ts"]), "kind": r["kind"], "crossing": r["crossing"],
+                                        "train": r["train"], "detail": r["detail"], "at": _local(r["at"]), "raw": r["raw"]}
+                                       for r in rows]}, headers=NOCACHE)
+
+
+@app.get("/api/diag/at")
+def diag_at(t: str):
+    """Stand der Rechnung zu einem Zeitpunkt (nächste gespeicherte Minute davor), Zeiten als deutsche Uhrzeit."""
+    try:
+        ts = _t(t)
+    except ValueError:
+        raise HTTPException(400, "t = Unix-Sekunden oder ISO-Zeit, z. B. 2026-10-07T07:58")
+    row = db("SELECT ts, data FROM history WHERE ts <= ? ORDER BY ts DESC LIMIT 1", (ts,), one=True)
+    if not row or ts - row["ts"] > 600:
+        raise HTTPException(404, "kein Stand gespeichert")
+    s = _unpack(row["data"])
+    hm = lambda ms: datetime.fromtimestamp(ms / 1000, TZ).strftime("%H:%M:%S") if ms else None
+    for c, l in s["passes"].items():
+        s["passes"][c] = [{**p, "pass": hm(p["pass"]), "closeFrom": hm(p["closeFrom"]), "closeTo": hm(p["closeTo"]),
+                           "stationDep": hm(p.get("stationDep"))} for p in l
+                          if abs(p["pass"] / 1000 - ts) < 3600]
+    for d in s["dropped"]:
+        d["pass"] = hm(d["pass"])
+    s["at"] = _local(row["ts"])
+    return JSONResponse(s, headers=NOCACHE)
+
+
+@app.get("/api/diag/raw/{rid}")
+def diag_raw(rid: int):
+    """Rohdaten (Transitous-Abschnitte + DB-Echtzeit) zu einer Auffälligkeit – zum Nachrechnen mit model.compute."""
+    row = db("SELECT ts, data FROM rawdata WHERE id=?", (rid,), one=True)
+    if not row:
+        raise HTTPException(404, "nicht gefunden")
+    return Response(zlib.decompress(row["data"]), media_type="application/json", headers=NOCACHE)
 
 # ---------------------------------------------------------------- Modell + Meldungen (öffentlich)
 

@@ -195,6 +195,11 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
       </div>
       <div class="side">
         <div class="card">
+          <div class="ct"><b>Auffälligkeiten</b><span class="muted" style="font-size:12px" id="diagWhen">24 h</span></div>
+          <div id="diag"></div>
+          <div class="mini">Der Server prüft jede Minute, ob die Rechnung so sein kann (z. B. Wald zu, beide anderen offen; Zug fehlt an einem Übergang; Zug plötzlich verschwunden). Auch abrufbar unter <span class="mono">/api/diag</span>.</div>
+        </div>
+        <div class="card">
           <div class="ct"><b>Letzte Meldungen</b></div>
           <div id="reports"></div>
         </div>
@@ -371,6 +376,20 @@ async function loadAnalysis() {
   $("vConfirm").value = v.confirm; $("vWindow").value = v.window; $("vRate").value = v.rate; $("vLive").checked = !!v.live;
   const L = analysis.config.learn; $("lAuto").checked = !!L.auto; $("lHalf").value = L.halflife; $("lPrior").value = L.prior; $("lVis").checked = L.visitors !== false; $("lVisW").value = L.visitorWeight ?? 0.3;
   renderAnalysis();
+  loadDiag();
+}
+
+const DIAG_KINDS = {wald_allein: "Wald allein zu", fehlt: "Zug fehlt", reihenfolge: "Reihenfolge falsch", verschwunden: "Zug verschwunden",
+  sprung: "Zeit gesprungen", aussortiert: "Doppelter Zug aussortiert", zu_lang: "Sperrung sehr lang", verkehrt: "Sperrung verkehrt"};
+async function loadDiag() {
+  try {
+    const d = await (await fetch("/api/diag?hours=24", {cache: "no-store"})).json();
+    $("diagWhen").textContent = "24 h · geprüft " + (d.lastCheck ? d.lastCheck.slice(-8, -3) : "noch nie");
+    $("diag").innerHTML = d.anomalies.length ? d.anomalies.slice(0, 30).map(a => `<div class="row" style="display:block;padding:8px 16px">
+        <div><b>${esc(DIAG_KINDS[a.kind] || a.kind)}</b> <span class="muted" style="font-size:12px">${esc(a.at || a.seen)}</span></div>
+        <div class="muted" style="font-size:13px">${esc([a.train, a.detail].filter(Boolean).join(" · "))}</div></div>`).join("")
+      : `<div class="row muted">nichts Auffälliges</div>`;
+  } catch (e) { $("diag").innerHTML = `<div class="row muted">nicht erreichbar</div>`; }
 }
 
 const TGROUPS = [["fern_o", "Fernzüge → Augsburg"], ["fern_w", "Fernzüge → Ulm"], ["regio_o", "Regionalzüge ohne Halt → Augsburg"],

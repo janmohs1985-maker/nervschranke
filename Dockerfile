@@ -3,7 +3,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_DIR=/data
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py model.py index.html core.js admin.html login.html impressum.html datenschutz.html ./
+COPY app.py model.py checks.pyindex.html core.js admin.html login.html impressum.html datenschutz.html ./
 COPY static ./static
 VOLUME /data
 EXPOSE 80

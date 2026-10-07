@@ -168,9 +168,10 @@ function parse(raw) {
       const mode = fromHere ? "ab" : toHere ? "an" : null;
       const pass = new Date(+dep + profileTime(along, total, (arr - dep) / 1000, mode) * 1000);
       // gleicher Zug aus einer zweiten Datenquelle (auch unter anderem Namen, z. B. „DRF“ und „WB 962“):
-      // zwei verschiedene Züge können nicht innerhalb einer Minute in dieselbe Richtung über den Übergang fahren
-      if (P[c.id].some(p => (p.name === name && p.westbound === westbound && Math.abs(p.pass - pass) < 120000) ||
-                            (p.westbound === westbound && Math.abs(p.pass - pass) < 60000))) continue;
+      // in derselben Richtung innerhalb einer Minute – außer beide haben verschiedene Zugnummern, dann sind es
+      // zwei Züge (beobachtet 7.10.2026: ICE 692 überholt die in Nersingen haltende RB 15 und fehlte sonst)
+      if (P[c.id].some(p => p.westbound === westbound && ((p.name === name && Math.abs(p.pass - pass) < 120000) ||
+                            (Math.abs(p.pass - pass) < 60000 && !(num && p.num && num !== p.num))))) continue;
       // Geschätzte Schließzeiten. Hält der Zug in Nersingen und fährt danach über den Übergang,
       // ist die Schranke schon zu, während er am Bahnsteig steht (beobachtet 4.10.2026: ca. 4 Min. vorher).
       // Die Werte je Fall kommen aus MODEL (Server, im Admin-Bereich aus Messungen angepasst).
@@ -195,6 +196,18 @@ function parse(raw) {
       if (!twin && !seenSeg.has(key)) { seenSeg.add(key); S.push({id: key, trip, name, num, label, kind, westbound, dep, arr, coords, cum, plat, mode}); }
     }
   }
+  // Derselbe Zug (gleiche Nummer, gleiche Richtung) doppelt mit weit auseinanderliegenden Zeiten – nur der mit
+  // der besten Zeitangabe zählt (beobachtet 7.10.2026: ICE 9576 einmal nach Fahrplan 07:56 und einmal mit
+  // DB-Echtzeit +9 um 08:05; der „Geisterzug“ hielt die Waldstraße zu)
+  const rank = {db: 0, rt: 1, plan: 2};
+  for (const id in P) {
+    const keep = [];
+    for (const p of [...P[id]].sort((a, b) => rank[a.src] - rank[b.src])) {
+      if (p.num && keep.some(q => q.num === p.num && q.westbound === p.westbound && Math.abs(q.pass - p.pass) < 1800000)) continue;
+      keep.push(p);
+    }
+    P[id] = keep;
+  }
   // Hinter dem Bahnhof geht die Schranke frühestens zu, wenn derselbe Zug an der Schranke davor
   // angekündigt wird – sonst wäre z. B. die Waldstraße vor der Elchinger Straße zu, obwohl der Zug
   // Richtung Augsburg erst über die Elchinger Straße kommt.
@@ -216,6 +229,13 @@ function parse(raw) {
       if (list[i].closeFrom < earliest) list[i].closeFrom = earliest;
     }
   }
+  // Die Waldstraße liegt zwischen den beiden anderen: für einen Zug frühestens zu, wenn derselbe Zug an der
+  // Elchinger oder Fichtenstraße zugeht (beobachtet 7.10.2026: Wald zu, obwohl beide äußeren offen waren)
+  const outer = {};
+  for (const id of ["elchinger", "fichten"]) for (const p of P[id])
+    if (!outer[p.id] || p.closeFrom < outer[p.id]) outer[p.id] = p.closeFrom;
+  for (const p of P.wald)
+    if (outer[p.id] && p.closeFrom < outer[p.id]) p.closeFrom = new Date(Math.min(+outer[p.id], +p.closeTo));
   for (const id in P) P[id].sort((a, b) => a.pass - b.pass);
   if (stLons.length) stationLon = stLons.reduce((a, b) => a + b, 0) / stLons.length;
   return {P, S};

@@ -14,6 +14,17 @@ Läuft unter https://nervschranke.de und https://bahn.mohs.es.
 
 Zum Ausprobieren: `index.html?plus=5` zeigt den Stand in 5 Minuten.
 
+## Plausibilitätsprüfung
+
+Der Server rechnet jede Minute einmal (auch ohne Besucher), hebt den Stand 3 Tage auf und prüft ihn mit
+`checks.py`: Wald allein zu, Zug fehlt an einem Übergang, falsche Reihenfolge, Zug verschwunden, Zeit
+gesprungen, doppelter Zug aussortiert. Bei einer Auffälligkeit bleiben auch die Rohdaten (Transitous + DB) 14 Tage.
+Nur Zugdaten, nichts über Besucher – deshalb ohne Anmeldung abrufbar:
+
+- `/api/diag?hours=24` – Auffälligkeiten (auch im Admin unter Auswertung)
+- `/api/diag/at?t=2026-10-07T07:58` – was die Rechnung zu diesem Zeitpunkt gesagt hat
+- `/api/diag/raw/<id>` – Rohdaten zu einer Auffälligkeit, zum Nachrechnen mit `model.compute`
+
 ## Meldungen
 
 - Besucher: 1 Meldung pro Gerät und Minute, höchstens 5 pro Anschluss. Eine Meldung zählt erst, wenn genug
