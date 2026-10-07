@@ -417,7 +417,7 @@ function renderTiles(now) {
     else if (z) {
       // wie viele Züge kommen noch? Zählt herunter (3 → 2), beim letzten nur noch „bis frei“
       const left = z.passList ? z.passList.filter(t => t > +now).length : z.trains;
-      tm = mmss(z.closeTo - now); sb = left > 1 ? `bleibt zu · noch ${left} Züge` : "bis frei";
+      tm = mmss(z.closeTo - now); sb = left > 1 ? `noch ${left} Züge` : "bis frei";
     }
     else if (r === "auf" && closedAt(c.id, now)) { tm = "auf"; sb = "gemeldet " + agoTxt(l.at); }
     else if (n && n.closeFrom - now < 90 * 60000) { tm = mmss(n.closeFrom - now); sb = "noch offen"; }
