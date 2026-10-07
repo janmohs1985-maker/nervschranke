@@ -338,7 +338,8 @@ async function postJSON(url, body, method = "POST") {
 
 // ---------- Zustand ----------
 // Kommt der nächste Zug so bald, dass die Schranke weniger als STAY_CLOSED offen wäre, bleibt sie zu:
-// Sperrungen werden dann zu einer zusammengefasst (closeTo = Ende der letzten, trains = Anzahl Züge)
+// Sperrungen werden dann zu einer zusammengefasst (closeTo = Ende der letzten, trains = Anzahl Züge,
+// passList = ihre Durchfahrten – damit die Kachel herunterzählen kann, wie viele noch kommen)
 const STAY_CLOSED = 120000;
 function mergedWindows(id) {
   const out = [];
@@ -346,8 +347,8 @@ function mergedWindows(id) {
     const last = out[out.length - 1];
     if (last && p.closeFrom - last.closeTo < STAY_CLOSED) {
       if (p.closeTo > last.closeTo) last.closeTo = p.closeTo;
-      last.trains++;
-    } else out.push({...p, trains: 1});
+      last.trains++; last.passList.push(+p.pass);
+    } else out.push({...p, trains: 1, passList: [+p.pass]});
   }
   return out;
 }
