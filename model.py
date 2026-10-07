@@ -112,7 +112,13 @@ def rt_shift(s, rt):
     if e.get("cancel"):
         return {"shift": 0, "cancel": True, "db": True, "pl": None}
     t_delay = (ms(s.get("departure")) if dep else ms(s.get("arrival"))) - sched
-    shift = (e["ct"] - e["pt"]) - t_delay
+    delay = e["ct"] - e["pt"]
+    # kommt der Zug aus Richtung Ulm nach Nersingen: Verspätung bei der Abfahrt in Ulm zählt mindestens
+    if not dep and "Nersingen" in to and (s.get("to") or {}).get("lon", 0) > (s.get("from") or {}).get("lon", 0):
+        u = (rt.get("ulm", {}).get(num) or {}).get("dp")
+        if u and not u.get("cancel") and u.get("ct") and u.get("pt") and 0 < sched - u["pt"] < 30 * 60000:
+            delay = max(delay, u["ct"] - u["pt"])
+    shift = delay - t_delay
     at_here = "Nersingen" in frm or "Nersingen" in to
     return {"shift": shift if abs(shift) >= 30000 else 0, "cancel": False, "db": True, "pl": (e.get("pl") or None) if at_here else None}
 

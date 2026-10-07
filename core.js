@@ -76,7 +76,13 @@ function rtShift(s) {
   if (!(Math.abs(e.pt - sched) < 120000)) return none;   // nicht derselbe Halt
   if (e.cancel) return {_shift: 0, _cancel: true, _db: true, _pl: null};
   const tDelay = Date.parse(dep ? s.departure : s.arrival) - sched;
-  const shift = (e.ct - e.pt) - tDelay;
+  let delay = e.ct - e.pt;
+  // kommt der Zug aus Richtung Ulm nach Nersingen: Verspätung bei der Abfahrt in Ulm zählt mindestens
+  if (!dep && to.includes("Nersingen") && (s.to?.lon || 0) > (s.from?.lon || 0)) {
+    const u = RT.ulm?.[num]?.dp;
+    if (u && !u.cancel && u.ct && u.pt && sched - u.pt > 0 && sched - u.pt < 30 * 60000) delay = Math.max(delay, u.ct - u.pt);
+  }
+  const shift = delay - tDelay;
   const atHere = from.includes("Nersingen") || to.includes("Nersingen");
   return {_shift: Math.abs(shift) >= 30000 ? shift : 0, _cancel: false, _db: true, _pl: atHere ? (e.pl || null) : null};
 }

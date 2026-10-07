@@ -513,7 +513,7 @@ async def realtime_data():
                 data[key] = await _db_station(eva, hdr)
         except Exception:
             data = _db_rt_cache[1] or {"ok": False}
-        _db_rt_cache[0], _db_rt_cache[1] = time.time() + 45, data
+        _db_rt_cache[0], _db_rt_cache[1] = time.time() + 20, data
         for k in [k for k, v in _db_plan_cache.items() if v[0] < time.time() - 3600]:
             _db_plan_cache.pop(k, None)
         return data
@@ -823,13 +823,17 @@ def live(request: Request = None):
         for k in [k for k, v in _active.items() if v < now - 60]:
             _active.pop(k, None)
         note_peak(len(_active), now)
-    rows = db("SELECT * FROM reports WHERE ts > ? AND ignored=0 AND exact=0 AND state IN ('zu','auf') ORDER BY ts", (now - 180,))
+    # Beobachtungen, dazu genaue Momente: Jans „geht zu/auf“ und beim Mitmessen „Schranke ist offen“ – wer zu gemeldet,
+    # den Zug gesehen und dann „offen“ getippt hat, steht davor; das gilt sofort für alle (beobachtet 7.10.2026 15:53,
+    # Elchinger: nach dem ICE war sie offen, die Seite zeigte wegen einer verspäteten RB noch zu)
+    rows = db("SELECT * FROM reports WHERE ts > ? AND ignored=0 AND state IN ('zu','auf') AND "
+              "(exact=0 OR source='admin' OR (source='visitor' AND state='auf')) ORDER BY ts", (now - 180,))
     conf = confirmed_ids(rows, cfg)
     out = {}
     for c in CROSSINGS:
         mine = [r for r in rows if r["crossing"] == c]
-        win = [r for r in mine if r["ts"] > now - cfg["window"] and r["source"] == "visitor"]
-        trusted = [r for r in mine if r["source"] == "admin" or r["id"] in conf]
+        win = [r for r in mine if r["ts"] > now - cfg["window"] and r["source"] == "visitor" and not r["exact"]]
+        trusted = [r for r in mine if r["source"] == "admin" or r["id"] in conf or (r["exact"] and r["state"] == "auf")]
         last = trusted[-1] if trusted else None
         out[c] = {
             "zu": len({r["device"] or r["iphash"] for r in win if r["state"] == "zu"}),
