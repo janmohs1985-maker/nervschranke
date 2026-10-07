@@ -51,10 +51,21 @@ main{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:22px 16px
 .fab:active{transform:translateX(-50%) scale(.97)}
 /* damit man den Knopf sieht: pulsierender Ring – orange und schneller, solange eine Schranke zu ist
    (dann stehen Leute davor und können melden) */
-.fab::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;animation:ring 3s ease-out infinite}
+.fab::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;animation:fabring 3s ease-out infinite}
 .fab.hot::after{animation-duration:1.6s;--ring:255,138,61}
-@keyframes ring{0%{box-shadow:0 0 0 0 rgba(var(--ring,242,243,247),.55)}70%,100%{box-shadow:0 0 0 14px rgba(var(--ring,242,243,247),0)}}
+@keyframes fabring{0%{box-shadow:0 0 0 0 rgba(var(--ring,242,243,247),.55)}70%,100%{box-shadow:0 0 0 14px rgba(var(--ring,242,243,247),0)}}
 @media (prefers-reduced-motion:reduce){.fab::after{animation:none}}
+/* Hinweis über dem Knopf („hier meldest du jetzt“) – nur bei den ersten Besuchen, weg nach Tipp oder ✕ */
+.hint{position:fixed;z-index:901;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));width:max-content;max-width:min(300px,calc(100% - 32px));
+  display:flex;align-items:flex-start;gap:8px;padding:11px 10px 11px 14px;border-radius:14px;background:var(--orange);color:#1A0E05;
+  font-size:14px;font-weight:600;line-height:1.35;box-shadow:0 10px 30px rgba(0,0,0,.45);animation:hintin .45s cubic-bezier(.3,1.5,.5,1) both,hintbob 2.4s ease-in-out .6s infinite}
+.hint::after{content:"";position:absolute;left:50%;bottom:-7px;margin-left:-8px;border:8px solid transparent;border-bottom:0;border-top-color:var(--orange)}
+.hint button{flex:none;width:24px;height:24px;margin:-3px -2px 0 0;border-radius:50%;font-size:16px;line-height:1;color:#1A0E05;background:rgba(0,0,0,.12)}
+.hint.out{animation:hintout .25s ease-in forwards}
+@keyframes hintin{from{opacity:0;transform:translate(-50%,14px) scale(.9)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes hintbob{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,-5px)}}
+@keyframes hintout{to{opacity:0;transform:translate(-50%,10px)}}
+@media (prefers-reduced-motion:reduce){.hint,.hint.out{animation:none;transform:translateX(-50%)}}
 [hidden]{display:none!important}
 .offer{margin-top:12px;padding:14px;border-radius:16px;background:#132519;border:1px solid rgba(61,220,132,.35);text-align:left}
 .offer .ot{font-size:16px;font-weight:700}
@@ -309,6 +320,7 @@ footer .legal a{color:var(--muted)}
   <svg width="26" height="14" viewBox="0 0 56 30" aria-hidden="true"><rect x="2" y="11" width="52" height="9" rx="4.5" fill="#0C0D12"/><rect x="14" y="11" width="9" height="9" fill="#FF3B30"/><rect x="32" y="11" width="9" height="9" fill="#FF3B30"/></svg>
   Schrankenstatus melden
 </button>
+<div class="hint" id="fabHint" role="status" hidden><span>Neu: Hier meldest du jetzt, ob eine Schranke zu oder offen ist.</span><button type="button" id="fabHintX" aria-label="Hinweis schließen">×</button></div>
 <div class="sheet-bg" id="sheetBg" hidden></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
   <div class="grip"></div>
@@ -795,7 +807,21 @@ $("mmAuf").addEventListener("click", () => measure("auf"));
 $("mmCancel").addEventListener("click", () => { MM = null; $("mm").hidden = true; });
 $("mmOk").addEventListener("click", () => { $("mm").hidden = true; });
 
-$("fab").addEventListener("click", () => openSheet("ask"));
+$("fab").addEventListener("click", () => { hideHint(true); openSheet("ask"); });
+// Hinweis auf den Melde-Knopf: bei den ersten 3 Besuchen, bis jemand den Knopf oder ✕ antippt; jeweils nach 12 s weg
+function hideHint(forever) {
+  if (forever) try { localStorage.setItem("nsHint", "9"); } catch (e) {}
+  const h = $("fabHint");
+  if (h.hidden || h.classList.contains("out")) return;
+  h.classList.add("out"); setTimeout(() => { h.hidden = true; }, 260);
+}
+(() => {
+  let n = 0;
+  try { n = +localStorage.getItem("nsHint") || 0; localStorage.setItem("nsHint", String(n + 1)); } catch (e) { return; }
+  if (n >= 3) return;
+  setTimeout(() => { $("fabHint").hidden = false; setTimeout(() => hideHint(false), 12000); }, 1500);
+})();
+$("fabHintX").addEventListener("click", () => hideHint(true));
 $("sheetBg").addEventListener("click", closeSheet);
 $("repCancel").addEventListener("click", closeSheet);
 $("doneOk").addEventListener("click", closeSheet);
