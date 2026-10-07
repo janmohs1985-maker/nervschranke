@@ -579,6 +579,8 @@ const SPRITES = {
     <div class="b" style="left:auto;width:28px;top:-2px;background:#C8102E;border-radius:3px 12px 3px 3px"></div>
     <div class="win" style="right:4px;top:3px;width:10px;height:7px;border-radius:0 7px 0 0;background:#2A0A10"></div>`},
 };
+// Gleise liegen gut 30 px auseinander – Züge höchstens ~20 px hoch, sonst decken sie das Nachbargleis (Jan, 7.10.2026)
+const TRAIN_SCALE = 0.68;
 const TAGCOL = {ice: "#F4F5F7", ic: "#F4F5F7", re: "#FF6B7A", rb: "#FF6B7A", nj: "#9EC3FF"};
 
 function renderBand(now) {
@@ -603,8 +605,9 @@ function renderBand(now) {
     if (!el) {
       el = document.createElement("div");
       el.className = "tr " + t.kind;
-      el.style.width = sp.w + "px"; el.style.height = sp.h + "px";
-      el.innerHTML = `<div style="position:absolute;inset:0;${t.westbound ? "transform:scaleX(-1)" : ""}">${sp.html}</div>
+      // Zug kleiner zeichnen (TRAIN_SCALE), damit er auf einem Gleis sitzt und nicht bis ans nächste reicht
+      el.style.width = sp.w * TRAIN_SCALE + "px"; el.style.height = sp.h * TRAIN_SCALE + "px";
+      el.innerHTML = `<div style="position:absolute;left:0;top:0;width:${sp.w}px;height:${sp.h}px;transform-origin:0 0;transform:scale(${TRAIN_SCALE})${t.westbound ? ` translateX(${sp.w}px) scaleX(-1)` : ""}">${sp.html}</div>
         <div class="tag" style="color:${TAGCOL[t.kind] || "#fff"};${t.westbound ? "left:4px" : "right:4px"}">${esc(t.name)}</div>`;
       el.style.setProperty("--wd", "-30px");
       el._tag = el.querySelector(".tag");
@@ -616,8 +619,8 @@ function renderBand(now) {
     const tag = t.halt && t.until ? `${nm} · ab in ${mmss(t.until - now)}` : t.halt ? `${nm} · hält` : nm;
     if (el._tag.textContent !== tag) el._tag.textContent = tag;
     // auf seinem Gleis (Front zeigt in Fahrtrichtung); Räder stehen auf der unteren Schiene
-    const top = trackY(t.c[1], t.plat) + 6 - sp.h;
-    const left = t.westbound ? x : x - sp.w;
+    const top = trackY(t.c[1], t.plat) + 6 - sp.h * TRAIN_SCALE;
+    const left = t.westbound ? x : x - sp.w * TRAIN_SCALE;
     el.style.transform = `translate(${left.toFixed(1)}px,${top}px)`;
   }
   for (const [id, el] of trainEls) if (!seen.has(id)) { el.remove(); trainEls.delete(id); }
