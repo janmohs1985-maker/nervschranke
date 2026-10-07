@@ -513,7 +513,7 @@ async def realtime_data():
                 data[key] = await _db_station(eva, hdr)
         except Exception:
             data = _db_rt_cache[1] or {"ok": False}
-        _db_rt_cache[0], _db_rt_cache[1] = time.time() + 20, data
+        _db_rt_cache[0], _db_rt_cache[1] = time.time() + 10, data
         for k in [k for k, v in _db_plan_cache.items() if v[0] < time.time() - 3600]:
             _db_plan_cache.pop(k, None)
         return data
