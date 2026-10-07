@@ -1076,7 +1076,7 @@ def learned(cfg=None):
             continue
         w = float(lc.get("visitorWeight", 0.3)) if vis else 1.0
         vals.setdefault((r["crossing"], e["param"]), []).append((e["measured"], r["ts"], w, vis, r["device"] or r["iphash"]))
-    vals = {k: corroborated(lst, 45) for k, lst in vals.items()}
+    vals = {k: v for k, lst in vals.items() if (v := corroborated(lst, 45))}   # leer = nichts Bestätigtes
     out = {c: {} for c in CROSSINGS}
     now = time.time()
     for (c, k), lst in vals.items():
@@ -1118,7 +1118,7 @@ def learned_timing(cfg=None):
             continue
         vals.setdefault(e["tgroup"], []).append((e["tmeasured"], r["ts"], float(lc.get("visitorWeight", 0.3)) if vis else 1.0,
                                                  vis, r["device"] or r["iphash"]))
-    vals = {k: corroborated(lst, 60) for k, lst in vals.items()}
+    vals = {k: v for k, lst in vals.items() if (v := corroborated(lst, 60))}
     out, now = {}, time.time()
     for k, lst in vals.items():
         v = [x for x, *_ in lst]
