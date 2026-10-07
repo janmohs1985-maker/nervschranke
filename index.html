@@ -227,7 +227,11 @@ h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-top:4px;line-heig
 .tl-head b{font-size:17px}
 .tl-head span{font-size:12px;color:var(--muted)}
 .tl{position:relative;height:44px;border-radius:12px;background:rgba(61,220,132,.16);overflow:hidden;margin-top:12px}
-.tl .blk{position:absolute;top:0;bottom:0;background:#E5484D;min-width:3px;display:flex;align-items:center;padding-left:5px;font-size:10px;font-weight:800;white-space:nowrap;overflow:hidden}
+.tl .blk{position:absolute;top:0;bottom:0;background:#E5484D;min-width:3px;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:0 4px;overflow:hidden}
+/* je Zug in der Sperrung eine Zeile mit Namen, mehrere untereinander; zu schmal → gekürzt */
+.tl .blk span{display:block;font-size:11px;font-weight:700;line-height:15px;white-space:nowrap;overflow:hidden;color:#fff}
+.tl .blk span+span{border-top:1px solid rgba(0,0,0,.18);padding-top:2px}
+.tl .gap{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--green);white-space:nowrap;overflow:hidden}
 .tl .now{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--text)}
 .ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px}
 
@@ -623,17 +627,41 @@ function renderBand(now) {
 }
 
 // ---------- Zeitstrahl + Liste ----------
+// Zeitleiste: rot = zu, grün = offen. In jedem roten Block stehen die Züge, die ihn verursachen (untereinander),
+// so lang wie es passt („ICE 594“ → „ICE“ → nichts). Lange Lücken sagen, wie lange offen ist.
+const tlMeasure = document.createElement("canvas").getContext("2d");
 function renderTimeline(now) {
   const c = CROSSINGS.find(x => x.id === sel);
   $("selName").textContent = c.name;
   const span = 30 * 60000, end = +now + span, tl = $("tl");
-  tl.querySelectorAll(".blk").forEach(e => e.remove());
-  for (const b of (passes[sel] || []).filter(p => p.closeTo > now && p.closeFrom < end)) {
-    const x0 = Math.max(0, b.closeFrom - now) / span * 100, x1 = Math.min(span, b.closeTo - now) / span * 100;
+  tl.querySelectorAll(".blk,.gap").forEach(e => e.remove());
+  const wins = mergedWindows(sel).filter(w => w.closeTo > now && w.closeFrom < end);
+  const trainsIn = w => (passes[sel] || []).filter(p => p.closeFrom >= w.closeFrom && p.closeFrom <= w.closeTo).sort((a, b) => a.pass - b.pass);
+  const rows = Math.max(1, ...wins.map(w => trainsIn(w).length));
+  tl.style.height = Math.max(44, rows * 17 + 10) + "px";
+  const W = tl.clientWidth || 300, pct = t => Math.min(span, Math.max(0, t - now)) / span * 100;
+  tlMeasure.font = "700 11px 'Space Grotesk', sans-serif";
+  const fit = (opts, px) => opts.find(o => tlMeasure.measureText(o).width <= px - 8) || "";
+  let prevEnd = +now;
+  for (const w of wins) {
+    const x0 = pct(w.closeFrom), x1 = pct(w.closeTo);
+    // Lücke davor: wie lange offen (nur wenn es hineinpasst)
+    if (w.closeFrom > prevEnd) addGap(prevEnd, w.closeFrom);
+    prevEnd = Math.max(prevEnd, +w.closeTo);
     const el = document.createElement("div"); el.className = "blk";
     el.style.left = x0 + "%"; el.style.width = (x1 - x0) + "%";
-    if (x1 - x0 > 8) el.textContent = b.name.split(" ")[0];
+    const px = W * (x1 - x0) / 100;
+    el.innerHTML = trainsIn(w).map(p => `<span>${esc(fit([p.isLong ? (p.label || p.name) : p.name, p.name.split(" ")[0]], px))}</span>`).join("");
     tl.insertBefore(el, tl.firstChild);
+  }
+  if (end > prevEnd) addGap(prevEnd, end);
+  function addGap(a, b) {
+    const x0 = pct(a), x1 = pct(b), px = W * (x1 - x0) / 100, mn = Math.round((b - a) / 60000);
+    const txt = b >= end ? "" : fit([`${mn} Min. offen`, `${mn} Min.`], px);
+    if (!txt) return;
+    const g = document.createElement("div"); g.className = "gap";
+    g.style.left = x0 + "%"; g.style.width = (x1 - x0) + "%"; g.textContent = txt;
+    tl.insertBefore(g, tl.firstChild);
   }
   $("ticks").innerHTML = [0, 1, 2, 3].map(i => `<span>${hm(new Date(+now + i * 600000))}</span>`).join("");
 }
