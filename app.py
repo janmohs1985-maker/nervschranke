@@ -549,7 +549,7 @@ async def state():
         out, _, _ = await compute_state()
         out.pop("dropped", None)
         data = json.dumps(out, separators=(",", ":")).encode()
-        _state_cache[0], _state_cache[1] = time.time() + 15, data
+        _state_cache[0], _state_cache[1] = time.time() + 10, data
         return Response(data, media_type="application/json", headers=NOCACHE)
 
 # ---------------------------------------------------------------- Verlauf + Plausibilitätsprüfung
