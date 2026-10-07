@@ -745,6 +745,17 @@ async def report(request: Request):
 _parsed_state = [None, None]
 
 
+def train_just_passed(crossing, ts):
+    """Ist laut Vorhersage kurz vor `ts` (höchstens 5 Min., bis 1 Min. danach) ein Zug über den Übergang gefahren?
+    Nur dann zeigt die Seite ein „Schranke ist offen“ vom Mitmessen sofort an – sonst braucht es eine Bestätigung."""
+    model_view(crossing, ts)   # sorgt dafür, dass der aktuelle Stand gelesen ist
+    st = _parsed_state[1]
+    if not st:
+        return False
+    t = ts * 1000
+    return any(t - 300000 <= p["pass"] <= t + 60000 for p in st["passes"].get(crossing, []))
+
+
 def model_view(crossing, ts):
     """Was sagt die Vorhersage für diesen Moment? ("zu"/"auf", Zug in ±10 Min.?) – None, wenn unbekannt."""
     if _parsed_state[0] != _state_cache[1]:
@@ -833,7 +844,8 @@ def live(request: Request = None):
     for c in CROSSINGS:
         mine = [r for r in rows if r["crossing"] == c]
         win = [r for r in mine if r["ts"] > now - cfg["window"] and r["source"] == "visitor" and not r["exact"]]
-        trusted = [r for r in mine if r["source"] == "admin" or r["id"] in conf or (r["exact"] and r["state"] == "auf")]
+        trusted = [r for r in mine if r["source"] == "admin" or r["id"] in conf
+                   or (r["exact"] and r["state"] == "auf" and train_just_passed(c, r["ts"]))]
         last = trusted[-1] if trusted else None
         out[c] = {
             "zu": len({r["device"] or r["iphash"] for r in win if r["state"] == "zu"}),
@@ -1031,6 +1043,17 @@ def _wmedian(pairs):
     return pairs[-1][0]
 
 
+def corroborated(lst, tol):
+    """Besucher-Messungen zählen erst, wenn jemand anderes ähnlich gemessen hat (Jan oder ein anderes Gerät,
+    höchstens `tol` Sekunden daneben) – sonst könnte z. B. ein Güterzug, der als Personenzug getippt wurde,
+    die Zeiten verziehen. Jans Messungen zählen immer. Einträge: (Wert, Zeit, Gewicht, Besucher?, Gerät)."""
+    out = []
+    for m in lst:
+        if not m[3] or any(o is not m and (not o[3] or o[4] != m[4]) and abs(o[0] - m[0]) <= tol for o in lst):
+            out.append(m)
+    return out
+
+
 def learned(cfg=None):
     if _learn_cache[1] is not None and _learn_cache[0] > time.time():
         return _learn_cache[1]
@@ -1052,7 +1075,8 @@ def learned(cfg=None):
         if vis and (e["dev"] is None or abs(e["dev"]) > 180):
             continue
         w = float(lc.get("visitorWeight", 0.3)) if vis else 1.0
-        vals.setdefault((r["crossing"], e["param"]), []).append((e["measured"], r["ts"], w, vis))
+        vals.setdefault((r["crossing"], e["param"]), []).append((e["measured"], r["ts"], w, vis, r["device"] or r["iphash"]))
+    vals = {k: corroborated(lst, 45) for k, lst in vals.items()}
     out = {c: {} for c in CROSSINGS}
     now = time.time()
     for (c, k), lst in vals.items():
@@ -1061,7 +1085,7 @@ def learned(cfg=None):
             med = statistics.median(v)
             mad = max(10.0, statistics.median([abs(x - med) for x in v]))
             lst = [m for m in lst if abs(m[0] - med) <= 3 * mad] or lst
-        pairs = [(x, w * 0.5 ** ((now - t) / 86400 / lc["halflife"])) for x, t, w, _ in lst]
+        pairs = [(x, w * 0.5 ** ((now - t) / 86400 / lc["halflife"])) for x, t, w, *_ in lst]
         W = sum(w for _, w in pairs)
         manual = cfg["crossings"][c][k]
         wmed = _wmedian(pairs)
@@ -1092,7 +1116,9 @@ def learned_timing(cfg=None):
             continue
         if vis and abs(e["dev"]) > 180:
             continue
-        vals.setdefault(e["tgroup"], []).append((e["tmeasured"], r["ts"], float(lc.get("visitorWeight", 0.3)) if vis else 1.0))
+        vals.setdefault(e["tgroup"], []).append((e["tmeasured"], r["ts"], float(lc.get("visitorWeight", 0.3)) if vis else 1.0,
+                                                 vis, r["device"] or r["iphash"]))
+    vals = {k: corroborated(lst, 60) for k, lst in vals.items()}
     out, now = {}, time.time()
     for k, lst in vals.items():
         v = [x for x, *_ in lst]
@@ -1100,7 +1126,7 @@ def learned_timing(cfg=None):
             med = statistics.median(v)
             mad = max(10.0, statistics.median([abs(x - med) for x in v]))
             lst = [m for m in lst if abs(m[0] - med) <= 3 * mad] or lst
-        pairs = [(x, w * 0.5 ** ((now - t) / 86400 / lc["halflife"])) for x, t, w in lst]
+        pairs = [(x, w * 0.5 ** ((now - t) / 86400 / lc["halflife"])) for x, t, w, *_ in lst]
         W = sum(w for _, w in pairs)
         wmed = _wmedian(pairs)
         manual = cfg["timing"][k]
