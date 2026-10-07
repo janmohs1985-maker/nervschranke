@@ -294,9 +294,9 @@ async function refresh() {
 
 // Schätzwerte kommen vom Server (/api/config), im Admin-Bereich anpassbar. Ohne Server gelten diese.
 const MODEL = {
-  elchinger: {durch_before: 120, durch_before_long: 90, durch_after: 30, ab_before: 250, ab_after: 55, an_before: 120, an_after: 45, an_after_dep: 60},
-  wald:      {durch_before: 120, durch_before_long: 90, durch_after: 30, ab_before: 250, ab_after: 55, an_before: 120, an_after: 45, an_after_dep: 60},
-  fichten:   {durch_before: 80,  durch_before_long: 60, durch_after: 20, ab_before: 250, ab_after: 55, an_before: 80,  an_after: 45, an_after_dep: 60},
+  elchinger: {durch_before: 120, durch_before_long: 90, durch_after: 30, ab_before: 250, ab_after: 55, an_before: 120, an_after: 45, an_after_dep: 60, stay_closed: 60},
+  wald:      {durch_before: 120, durch_before_long: 90, durch_after: 30, ab_before: 250, ab_after: 55, an_before: 120, an_after: 45, an_after_dep: 60, stay_closed: 60},
+  fichten:   {durch_before: 80,  durch_before_long: 60, durch_after: 20, ab_before: 250, ab_after: 55, an_before: 80,  an_after: 45, an_after_dep: 60, stay_closed: 60},
 };
 const VISITORS = {confirm: 2, window: 90, rate: 60, live: true};
 async function loadConfig() {
@@ -337,15 +337,15 @@ async function postJSON(url, body, method = "POST") {
 }
 
 // ---------- Zustand ----------
-// Kommt der nächste Zug so bald, dass die Schranke weniger als STAY_CLOSED offen wäre, bleibt sie zu:
+// Kommt der nächste Zug so bald, dass die Schranke weniger als stay_closed Sekunden offen wäre (je Übergang,
+// im Admin einstellbar), bleibt sie zu:
 // Sperrungen werden dann zu einer zusammengefasst (closeTo = Ende der letzten, trains = Anzahl Züge,
 // passList = ihre Durchfahrten – damit die Kachel herunterzählen kann, wie viele noch kommen)
-const STAY_CLOSED = 120000;
 function mergedWindows(id) {
-  const out = [];
+  const out = [], gap = (MODEL[id]?.stay_closed ?? 60) * 1000;
   for (const p of [...(passes[id] || [])].sort((a, b) => a.closeFrom - b.closeFrom)) {
     const last = out[out.length - 1];
-    if (last && p.closeFrom - last.closeTo < STAY_CLOSED) {
+    if (last && p.closeFrom - last.closeTo < gap) {
       if (p.closeTo > last.closeTo) last.closeTo = p.closeTo;
       last.trains++; last.passList.push(+p.pass);
     } else out.push({...p, trains: 1, passList: [+p.pass]});

@@ -235,6 +235,7 @@ const LABELS = {
   ab_before: ["Abfahrt in Nersingen", "zu vor dem Zug (steht am Bahnsteig)"], ab_after: ["Abfahrt in Nersingen", "auf nach dem Zug"],
   an_before: ["Ankunft in Nersingen", "zu vor dem Zug"], an_after: ["Ankunft in Nersingen", "auf nach dem Zug (mindestens)"],
   an_after_dep: ["Ankunft in Nersingen", "auf nach seiner Abfahrt im Bahnhof"],
+  stay_closed: ["Mehrere Züge", "bleibt zu, wenn sie dazwischen kürzer offen wäre"],
 };
 const fmtS = s => { if (s == null || isNaN(s)) return "–"; const sg = s < 0 ? "−" : ""; s = Math.abs(Math.round(s)); return sg + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
 const devTxt = d => d == null ? "" : (d >= 0 ? "+" : "−") + (Math.abs(d) < 60 ? Math.round(Math.abs(d)) + " s" : fmtS(Math.abs(d)));

@@ -11,8 +11,8 @@ ORDER = ("elchinger", "wald", "fichten")   # von West nach Ost
 LOOK_BACK, LOOK_AHEAD = 10 * 60000, 60 * 60000
 
 
-def merged(passes, gap=120000):
-    """Sperrzeiten wie auf der Seite zusammengefasst (Lücke unter 2 Min. → bleibt zu)."""
+def merged(passes, gap=60000):
+    """Sperrzeiten wie auf der Seite zusammengefasst (Lücke unter stay_closed → bleibt zu)."""
     out = []
     for p in sorted(passes, key=lambda p: p["closeFrom"]):
         if out and p["closeFrom"] - out[-1][1] < gap:
@@ -56,8 +56,9 @@ def check(state, prev, now):
     near = lambda p: now - LOOK_BACK <= p["pass"] <= now + LOOK_AHEAD
 
     # 1. Waldstraße allein zu, beide äußeren offen (länger als 30 s)
-    outer = merged(P["elchinger"]) + merged(P["fichten"])
-    for s, e in _minus(merged(P["wald"]), outer):
+    gap = lambda c: (state.get("model", {}).get(c, {}).get("stay_closed") or 60) * 1000
+    outer = merged(P["elchinger"], gap("elchinger")) + merged(P["fichten"], gap("fichten"))
+    for s, e in _minus(merged(P["wald"], gap("wald")), outer):
         if e - s > 30000 and e > now - LOOK_BACK and s < now + LOOK_AHEAD:
             add("wald_allein", "wald", None, f"Wald zu, Elchinger und Fichten offen ({round((e - s) / 1000)} s)", s)
 

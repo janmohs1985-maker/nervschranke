@@ -43,11 +43,11 @@ STATES = ("zu", "auf", "zug")
 DEFAULT_CONFIG = {
     "crossings": {
         "elchinger": {"durch_before": 120, "durch_before_long": 90, "durch_after": 30,
-                      "ab_before": 250, "ab_after": 55, "an_before": 120, "an_after": 45, "an_after_dep": 60},
+                      "ab_before": 250, "ab_after": 55, "an_before": 120, "an_after": 45, "an_after_dep": 60, "stay_closed": 60},
         "wald": {"durch_before": 120, "durch_before_long": 90, "durch_after": 30,
-                 "ab_before": 250, "ab_after": 55, "an_before": 120, "an_after": 45, "an_after_dep": 60},
+                 "ab_before": 250, "ab_after": 55, "an_before": 120, "an_after": 45, "an_after_dep": 60, "stay_closed": 60},
         "fichten": {"durch_before": 80, "durch_before_long": 60, "durch_after": 20,
-                    "ab_before": 250, "ab_after": 55, "an_before": 80, "an_after": 45, "an_after_dep": 60},
+                    "ab_before": 250, "ab_after": 55, "an_before": 80, "an_after": 45, "an_after_dep": 60, "stay_closed": 60},
     },
     "visitors": {"confirm": 2, "window": 90, "rate": 60, "live": True},
     # Selbst lernen aus Jans genauen Messungen: Halbwertszeit (Tage) und „Vorwissen“ (so viele Messungen wiegt
@@ -735,7 +735,6 @@ async def report(request: Request):
     return live()
 
 
-STAY_CLOSED = 120   # wie auf der Seite: kürzere Lücken zwischen zwei Zügen = bleibt zu
 _parsed_state = [None, None]
 
 
@@ -750,9 +749,11 @@ def model_view(crossing, ts):
     if not st:
         return None
     t = ts * 1000
+    # kürzere Lücke zwischen zwei Zügen = bleibt zu (wie auf der Seite, je Übergang im Admin einstellbar)
+    gap = (st.get("model", {}).get(crossing, {}).get("stay_closed") or 60) * 1000
     wins = []
     for p in sorted(st["passes"].get(crossing, []), key=lambda p: p["closeFrom"]):
-        if wins and p["closeFrom"] - wins[-1][1] < STAY_CLOSED * 1000:
+        if wins and p["closeFrom"] - wins[-1][1] < gap:
             wins[-1][1] = max(wins[-1][1], p["closeTo"])
         else:
             wins.append([p["closeFrom"], p["closeTo"]])
