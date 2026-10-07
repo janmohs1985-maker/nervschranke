@@ -229,8 +229,11 @@ h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-top:4px;line-heig
 .tl{position:relative;height:44px;border-radius:12px;background:rgba(61,220,132,.16);overflow:hidden;margin-top:12px}
 .tl .blk{position:absolute;top:0;bottom:0;background:#E5484D;min-width:3px;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:0 4px;overflow:hidden}
 /* je Zug in der Sperrung eine Zeile mit Namen, mehrere untereinander; zu schmal → gekürzt */
-.tl .blk span{display:block;font-size:11px;font-weight:700;line-height:15px;white-space:nowrap;overflow:hidden;color:#fff}
-.tl .blk span+span{border-top:1px solid rgba(0,0,0,.18);padding-top:2px}
+.tl .blk{padding:0}
+/* je Zug eine Zeile; der dunklere Streifen und der Name stehen dort, wo dieser Zug die Schranke zu hält */
+.tl .blk .tr{position:relative;height:15px}
+.tl .blk .tr i{position:absolute;top:0;bottom:0;border-radius:3px;background:rgba(0,0,0,.2)}
+.tl .blk .tr span{position:absolute;top:0;font-size:11px;font-weight:700;line-height:15px;white-space:nowrap;overflow:hidden;color:#fff;padding-left:3px}
 .tl .gap{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--green);white-space:nowrap;overflow:hidden}
 .tl .now{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--text)}
 .ticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px}
@@ -651,7 +654,14 @@ function renderTimeline(now) {
     const el = document.createElement("div"); el.className = "blk";
     el.style.left = x0 + "%"; el.style.width = (x1 - x0) + "%";
     const px = W * (x1 - x0) / 100;
-    el.innerHTML = trainsIn(w).map(p => `<span>${esc(fit([p.isLong ? (p.label || p.name) : p.name, p.name.split(" ")[0]], px))}</span>`).join("");
+    // jeder Zug an seiner eigenen Stelle im Block (sie kommen ja nacheinander); der Name darf bis zum Blockende laufen
+    const len = w.closeTo - w.closeFrom;
+    el.innerHTML = trainsIn(w).map(p => {
+      const a = Math.max(0, (p.closeFrom - w.closeFrom) / len), b = Math.min(1, (p.closeTo - w.closeFrom) / len);
+      const name = fit([p.isLong ? (p.label || p.name) : p.name, p.name.split(" ")[0]], px * (1 - a) + 2);
+      return `<div class="tr"><i style="left:${a * 100}%;width:${(b - a) * 100}%"></i>` +
+        `<span style="left:${a * 100}%;max-width:${(1 - a) * 100}%">${esc(name)}</span></div>`;
+    }).join("");
     tl.insertBefore(el, tl.firstChild);
   }
   if (end > prevEnd) addGap(prevEnd, end);
