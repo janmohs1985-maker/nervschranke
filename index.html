@@ -95,7 +95,14 @@ main{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:22px 16px
 .mmbig.auf{background:#132519;border:2px solid rgba(61,220,132,.55)}
 .mmbig:active{transform:scale(.98)}
 .mmbig.small{height:104px}.mmbig.small b{font-size:26px}
+/* Zugart beim Mitmessen: Güterzüge stehen in keinem Fahrplan – so wissen wir, warum die Schranke „ohne Zug“ zu war */
+.mm2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.mm2 .mmbig{height:170px}.mm2 .mmbig b{font-size:24px}
+.mmbig.gueter{background:#2A2014;border:2px solid rgba(255,176,32,.55)}
+.mmcount{text-align:center;font-size:13px;font-weight:700;letter-spacing:.1em;color:var(--muted)}
 .mmbig.hit{animation:hit .45s ease-out}
+.mmbig.gueter.hit{animation:hitg .45s ease-out}
+@keyframes hitg{0%{box-shadow:0 0 0 0 rgba(255,176,32,.7)}100%{box-shadow:0 0 0 22px rgba(255,176,32,0)}}
 @keyframes hit{0%{box-shadow:0 0 0 0 rgba(122,162,255,.7)}100%{box-shadow:0 0 0 22px rgba(122,162,255,0)}}
 /* Danke-Animation: Konfetti in Schranken-Farben aus dem Haken, Haken springt rein */
 .ok{position:relative}
@@ -349,11 +356,15 @@ footer .legal a{color:var(--muted)}
   <div id="mmRun" class="mmin">
     <div class="mmk">MITMESSEN · <span id="mmX"></span></div>
     <div class="mmt" id="mmTitle">Tipp bei jedem Zug – und wenn sie aufgeht</div>
-    <div class="ss">Kommen mehrere Züge, tippst du einfach mehrmals.</div>
+    <div class="ss">Tipp bei jedem Zug, ob es ein Personen- oder Güterzug war. Kommen mehrere, tippst du mehrmals.</div>
     <div class="warnline">Nur zu Fuß, mit dem Rad oder als Beifahrer – nicht am Steuer.</div>
     <div style="flex:1"></div>
     <div class="mmsince" id="mmSince"></div>
-    <button type="button" class="mmbig zug" id="mmZug"><span id="mmCount"></span><b>Zug kam jetzt</b></button>
+    <div class="mmcount" id="mmCount"></div>
+    <div class="mm2">
+      <button type="button" class="mmbig zug" id="mmZug"><span>ZUG KAM</span><b>Personenzug</b></button>
+      <button type="button" class="mmbig gueter" id="mmGueter"><span>ZUG KAM</span><b>Güterzug</b></button>
+    </div>
     <button type="button" class="mmbig auf small" id="mmAuf"><b>Schranke ist offen</b></button>
     <div class="msg" id="mmMsg" role="status"></div>
     <button type="button" class="cancel" id="mmCancel">Abbrechen</button>
@@ -767,7 +778,7 @@ async function sendReport(x, state) {
   }
 }
 // ---------- Mitmessen ----------
-let MM = null;   // {x, t0, trains, last, busy}
+let MM = null;   // {x, t0, trains, freight, lastType, last, busy}
 function offerMeasure(x, t0) {
   const box = $("doneOffer");
   box.hidden = false;
@@ -775,38 +786,45 @@ function offerMeasure(x, t0) {
   box.querySelector("[data-mm-no]").onclick = () => { box.hidden = true; };
 }
 function startMeasure(x, t0) {
-  MM = {x, t0, trains: 0, last: 0, busy: false};
+  MM = {x, t0, trains: 0, freight: 0, lastType: null, last: 0, busy: false};
   $("mm").hidden = false; $("mmDone").hidden = true; $("mmRun").hidden = false;
   $("mmX").textContent = CROSSINGS.find(c => c.id === x).name.toUpperCase();
   renderMeasure();
 }
 function renderMeasure() {
   if (!MM) return;
-  $("mmCount").textContent = MM.trains ? `${MM.trains} ${MM.trains > 1 ? "ZÜGE" : "ZUG"} GEZÄHLT · NOCH EINER?` : "BEI JEDEM ZUG EINMAL TIPPEN";
+  const f = MM.freight ? ` (${MM.freight} GÜTER)` : "";
+  $("mmCount").textContent = MM.trains ? `${MM.trains} ${MM.trains > 1 ? "ZÜGE" : "ZUG"} GEZÄHLT${f} · NOCH EINER?` : "BEI JEDEM ZUG EINMAL TIPPEN";
   $("mmMsg").textContent = "";
 }
 setInterval(() => { if (MM && !$("mm").hidden) $("mmSince").textContent = "zu seit " + mmss(Date.now() - MM.t0); }, 1000);
-// state: "zug" (beliebig oft, je Zug einmal) oder "auf" (Schluss)
-async function measure(state) {
+// state: "zug" (beliebig oft, je Zug einmal, type "personen"/"gueter") oder "auf" (Schluss)
+async function measure(state, type) {
   if (!MM || MM.busy) return;
   const t = Date.now();
   if (state === "zug" && t - MM.last < 5000) { $("mmMsg").textContent = "Gerade gezählt – kommt noch ein Zug, tipp dann nochmal."; return; }
   MM.busy = true;
-  const res = await postJSON("/api/report", {crossing: MM.x, state, exact: true, device: deviceId, snapshot: snapshotFor(MM.x, nowD(), state)});
+  // Güterzüge stehen in keinem Fahrplan: kein Fahrplan-Zug als Bezug. „auf“ nach einem Güterzug sagt der Server dem Lernen.
+  const train = state === "zug" ? type : MM.lastType;
+  const res = await postJSON("/api/report", {crossing: MM.x, state, exact: true, device: deviceId, train,
+    snapshot: train === "gueter" ? null : snapshotFor(MM.x, nowD(), state)});
   MM.busy = false;
   if (!res.ok && res.status !== 429) { $("mmMsg").textContent = res.status === 409 ? "Das ging nicht – bitte erst „ZU“ melden." : "Speichern hat nicht geklappt, nochmal?"; return; }
   if (navigator.vibrate) navigator.vibrate(40);
   if (state === "zug") {
-    MM.trains++; MM.last = t;
-    const b = $("mmZug"); b.classList.remove("hit"); void b.offsetWidth; b.classList.add("hit");
+    MM.trains++; MM.last = t; MM.lastType = type;
+    if (type === "gueter") MM.freight++;
+    const b = $(type === "gueter" ? "mmGueter" : "mmZug"); b.classList.remove("hit"); void b.offsetWidth; b.classList.add("hit");
     renderMeasure(); return;
   }
-  const n = MM.trains;
-  $("mmSum").textContent = `Zu war sie mindestens ${mmss(t - MM.t0)} Min.` + (n ? ` – in der Zeit ${n === 1 ? "ist ein Zug" : "sind " + n + " Züge"} drübergefahren.` : "");
+  const n = MM.trains, g = MM.freight;
+  $("mmSum").textContent = `Zu war sie mindestens ${mmss(t - MM.t0)} Min.` + (n ? ` – in der Zeit ${n === 1 ? "ist ein Zug" : "sind " + n + " Züge"} drübergefahren` +
+    (g ? `, davon ${g === n ? (n === 1 ? "ein Güterzug" : "alle Güterzüge") : g === 1 ? "ein Güterzug" : g + " Güterzüge"}` : "") + "." : "");
   $("mmRun").hidden = true; $("mmDone").hidden = false; MM = null;
   party("mmOk1", "mmParty");
 }
-$("mmZug").addEventListener("click", () => measure("zug"));
+$("mmZug").addEventListener("click", () => measure("zug", "personen"));
+$("mmGueter").addEventListener("click", () => measure("zug", "gueter"));
 $("mmAuf").addEventListener("click", () => measure("auf"));
 $("mmCancel").addEventListener("click", () => { MM = null; $("mm").hidden = true; });
 $("mmOk").addEventListener("click", () => { $("mm").hidden = true; });

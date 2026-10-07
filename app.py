@@ -121,6 +121,11 @@ CREATE TABLE IF NOT EXISTS rawdata (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REA
 """)
 _db.commit()
 # exact=1: genauer Moment („geht gerade zu/auf“), exact=0: Beobachtung („ist schon zu/auf“, alle Besucher-Meldungen)
+# traintype: beim Mitmessen „personen“ oder „gueter“ (bei „auf“: Art des letzten Zugs). Güterzüge stehen in
+# keinem Fahrplan – ihre Messungen dürfen nicht einem Personenzug zugeordnet werden.
+if "traintype" not in [r[1] for r in _db.execute("PRAGMA table_info(reports)")]:
+    _db.execute("ALTER TABLE reports ADD COLUMN traintype TEXT")
+    _db.commit()
 if "exact" not in [r[1] for r in _db.execute("PRAGMA table_info(reports)")]:
     _db.execute("ALTER TABLE reports ADD COLUMN exact INTEGER NOT NULL DEFAULT 0")
     _db.execute("UPDATE reports SET exact=1 WHERE source='admin'")
@@ -726,8 +731,10 @@ async def report(request: Request):
     # gesperrt? Dann still annehmen (der Störer merkt nichts), aber nie zählen lassen.
     # Geräte bleiben gesperrt, Anschlüsse nur 24 h (Handy-Netze teilen sich IP-Adressen)
     blocked = db("SELECT 1 FROM blocked WHERE (k=? AND k != '') OR (k=? AND ts > ?)", ("d:" + device if device else "", "i:" + ip, now - 86400), one=True)
-    db("INSERT INTO reports(ts, crossing, state, source, device, iphash, snapshot, exact, ignored) VALUES(?,?,?,?,?,?,?,?,?)",
-       (now, crossing, state, "visitor", device, ip, clean_snapshot(body.get("snapshot")), 1 if exact else 0, 1 if blocked else 0))
+    traintype = body.get("train") if exact and body.get("train") in ("personen", "gueter") else None
+    db("INSERT INTO reports(ts, crossing, state, source, device, iphash, snapshot, exact, ignored, traintype) VALUES(?,?,?,?,?,?,?,?,?,?)",
+       (now, crossing, state, "visitor", device, ip, None if traintype == "gueter" else clean_snapshot(body.get("snapshot")),
+        1 if exact else 0, 1 if blocked else 0, traintype))
     if exact:
         learn_invalidate()
     # Besucher-Meldungen höchstens 12 Monate aufheben (so steht es in der Datenschutzerklärung)
@@ -895,7 +902,7 @@ def actual_passes(rows):
     """(Übergang, geschätzte Durchfahrt) → echte Durchfahrt laut „Zug fährt drüber“."""
     out = {}
     for r in rows:
-        if r["state"] != "zug" or r["ignored"] or not r["snapshot"]:
+        if r["state"] != "zug" or r["ignored"] or not r["snapshot"] or r["traintype"] == "gueter":
             continue
         try:
             s = json.loads(r["snapshot"])
@@ -916,6 +923,11 @@ def evaluate(r, cfg, actual_pass=None):
     out = {"id": r["id"], "ts": r["ts"], "crossing": r["crossing"], "state": r["state"], "source": r["source"],
            "exact": exact, "match": None, "ignored": bool(r["ignored"]), "train": None, "dev": None, "param": None,
            "measured": None, "outlier": False}
+    out["traintype"] = r["traintype"]
+    if r["traintype"] == "gueter":
+        # Güterzug (oder „auf“ direkt nach einem): steht in keinem Fahrplan, zählt nicht fürs Lernen
+        out["outlier"], out["why"] = True, "Güterzug – nicht im Fahrplan"
+        return out
     if not s or "pass" not in s:
         if not exact and r["state"] == "auf":  # „ist auf“ ohne Zug in der Nähe – passt zur Schätzung
             out["match"], out["dev"] = True, 0.0
