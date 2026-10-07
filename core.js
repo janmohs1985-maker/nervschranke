@@ -220,7 +220,8 @@ function parse(raw) {
   // Hält der Zug nach dem Übergang in Nersingen, bleibt die Schranke zu, bis er dort wieder abfährt
   // (beobachtet 6.10.2026 Elchinger, RB 15 → Augsburg: auf erst 2½ Min. nach der Durchfahrt).
   for (const id in P) for (const p of P[id]) {
-    if (p.case !== "an" || !stationDep[p.id]) continue;
+    // außer an der Elchinger: Zug aus Ulm, der hält → gleich nach der Durchfahrt auf (Jan, 7.10.2026)
+    if (p.case !== "an" || !stationDep[p.id] || id === "elchinger") continue;
     p.stationDep = stationDep[p.id];
     const t = new Date(+p.stationDep + MODEL[id].an_after_dep * 1000);
     if (t > p.closeTo) p.closeTo = t;

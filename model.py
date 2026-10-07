@@ -279,10 +279,11 @@ def compute(raw, rt, model, timing=None):
                 continue
             keep.append(p)
         P[cid] = keep
-    # hält der Zug nach dem Übergang in Nersingen: Schranke bleibt bis zu seiner Abfahrt zu
+    # hält der Zug nach dem Übergang in Nersingen: Schranke bleibt bis zu seiner Abfahrt zu – außer an der Elchinger:
+    # kommt der Zug aus Ulm und hält, geht sie gleich nach der Durchfahrt auf (Jan, 7.10.2026: „das ist immer so“)
     for cid, lst in P.items():
         for p in lst:
-            if p["case"] != "an" or p["id"] not in station_dep:
+            if p["case"] != "an" or p["id"] not in station_dep or cid == "elchinger":
                 continue
             p["stationDep"] = station_dep[p["id"]]
             t = p["stationDep"] + model[cid]["an_after_dep"] * 1000

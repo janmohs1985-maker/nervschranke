@@ -970,7 +970,7 @@ def evaluate(r, cfg, actual_pass=None):
         out["dev"] = r["ts"] - cf
         out["measured"] = ref - r["ts"]
         out["param"] = case + "_before" + ("_long" if case == "durch" and s.get("long") else "")
-    elif r["state"] == "auf" and case == "an" and s.get("stationDep"):
+    elif r["state"] == "auf" and case == "an" and s.get("stationDep") and r["crossing"] != "elchinger":
         # Zug hält nach dem Übergang: Schranke geht erst nach seiner Abfahrt in Nersingen auf
         out["dev"] = r["ts"] - ct
         out["measured"] = r["ts"] - s["stationDep"] / 1000
