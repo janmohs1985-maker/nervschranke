@@ -49,24 +49,12 @@ main{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:22px 16px
 .fab{position:fixed;z-index:900;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:8px;
   padding:14px 20px;border-radius:999px;background:#F2F3F7;color:#0C0D12;font-weight:700;font-size:15px;white-space:nowrap;box-shadow:0 10px 30px rgba(0,0,0,.5)}
 .fab:active{transform:translateX(-50%) scale(.97)}
-.fab{transition:opacity .25s,transform .25s}
-.fab.away{opacity:0;pointer-events:none;transform:translateX(-50%) translateY(20px)}
-.meld{padding:16px;border-color:rgba(255,138,61,.28);background:linear-gradient(160deg,#221A14,#16171E 60%)}
-.meld .mh{display:flex;align-items:center;gap:12px}
-.meld .mk{font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--orange)}
-.meld .mtitle{font-size:18px;font-weight:700;margin-top:2px}
-.meld .ms{font-size:14px;color:var(--muted);line-height:1.45;margin-top:10px}
-.meld .ms b{color:var(--text)}
-.meld .chips{margin-top:14px}
-.in2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
-.inb{display:flex;align-items:center;justify-content:center;gap:9px;min-height:58px;border-radius:16px;font-size:16px;font-weight:700}
-.inb .ld{width:12px;height:12px;border-radius:50%;flex:none}
-.inb.zu{background:#2A1416;border:2px solid rgba(255,59,48,.55)}.inb.zu .ld{background:var(--red)}
-.inb.auf{background:#132519;border:2px solid rgba(61,220,132,.5)}.inb.auf .ld{background:var(--green)}
-.inb:active{transform:scale(.97)}
-.imsg{min-height:0;margin-top:10px;font-size:13px;color:var(--amber)}
-.imsg:empty{display:none}
-.imsg.ok{color:var(--green)}
+/* damit man den Knopf sieht: pulsierender Ring – orange und schneller, solange eine Schranke zu ist
+   (dann stehen Leute davor und können melden) */
+.fab::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;animation:ring 3s ease-out infinite}
+.fab.hot::after{animation-duration:1.6s;--ring:255,138,61}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(var(--ring,242,243,247),.55)}70%,100%{box-shadow:0 0 0 14px rgba(var(--ring,242,243,247),0)}}
+@media (prefers-reduced-motion:reduce){.fab::after{animation:none}}
 [hidden]{display:none!important}
 .offer{margin-top:12px;padding:14px;border-radius:16px;background:#132519;border:1px solid rgba(61,220,132,.35);text-align:left}
 .offer .ot{font-size:16px;font-weight:700}
@@ -95,6 +83,17 @@ main{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:22px 16px
 .mmbig.zug{background:#1B2440;border:2px solid rgba(122,162,255,.6)}
 .mmbig.auf{background:#132519;border:2px solid rgba(61,220,132,.55)}
 .mmbig:active{transform:scale(.98)}
+.mmbig.small{height:104px}.mmbig.small b{font-size:26px}
+.mmbig.hit{animation:hit .45s ease-out}
+@keyframes hit{0%{box-shadow:0 0 0 0 rgba(122,162,255,.7)}100%{box-shadow:0 0 0 22px rgba(122,162,255,0)}}
+/* Danke-Animation: Konfetti in Schranken-Farben aus dem Haken, Haken springt rein */
+.ok{position:relative}
+.ok.pop{animation:okpop .5s cubic-bezier(.3,1.6,.5,1)}
+@keyframes okpop{0%{transform:scale(.3);opacity:0}100%{transform:scale(1);opacity:1}}
+.party{position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none}
+.party i{position:absolute;left:-4px;top:-6px;width:8px;height:12px;border-radius:2px;opacity:0;animation:burst 1.2s cubic-bezier(.2,.7,.4,1) forwards}
+@keyframes burst{0%{opacity:1;transform:translate(0,0) rotate(0)}80%{opacity:1}100%{opacity:0;transform:translate(var(--dx),var(--dy)) rotate(var(--r))}}
+@media (prefers-reduced-motion:reduce){.ok.pop,.mmbig.hit{animation:none}.party{display:none}}
 .mm .msg{min-height:18px;font-size:13px;color:var(--amber);text-align:center}
 .sheet-bg{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55)}
 .sheet{position:fixed;z-index:1001;left:0;right:0;bottom:0;margin:0 auto;max-width:520px;background:var(--card);border-radius:28px 28px 0 0;
@@ -104,14 +103,24 @@ main{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:22px 16px
 .sheet .st{font-size:21px;font-weight:700}
 .sheet .ss{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.45}
 .sheet .sk{font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--dim);margin-top:18px}
-.chips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}
-.chip{padding:12px 4px;border-radius:14px;font-weight:600;font-size:14px;background:var(--card2);border:1.5px solid var(--stroke)}
-.chip.on{background:#2A2D38;border-color:var(--text)}
-.big2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:18px}
-.bigb{height:118px;border-radius:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font-size:18px;font-weight:700}
-.bigb.zu{background:#2A1416;border:2px solid rgba(255,59,48,.55)}
-.bigb.auf{background:#132519;border:2px solid rgba(61,220,132,.5)}
-.bigb:active{transform:scale(.97)}
+/* je Übergang eine Zeile: Name + was die Seite gerade sagt, daneben ZU / OFFEN – ein Tipp genügt */
+.rrow{display:flex;align-items:center;gap:8px;padding:11px 0;border-top:1px solid var(--stroke)}
+.rrow:first-child{border-top:0}
+.rrow .rn{flex:1;min-width:0}
+.rrow .rn b{display:block;font-size:17px}
+.rrow .rn span{font-size:12px;color:var(--muted)}
+.rrow .rn span.zu{color:#FF6B61}
+.rb{min-width:84px;min-height:50px;border-radius:14px;font-size:14px;font-weight:700}
+.rb.zu{background:#2A1416;border:2px solid rgba(255,59,48,.55);color:#FF6B61}
+.rb.auf{background:#132519;border:2px solid rgba(61,220,132,.5);color:var(--green)}
+.rb:active{transform:scale(.96)}
+/* am Computer: Fenster mittig statt unten angedockt */
+@media (min-width:700px){
+  .sheet{top:50%;bottom:auto;left:50%;right:auto;width:460px;max-width:calc(100% - 32px);transform:translate(-50%,-50%);
+    border-radius:24px;border:1px solid rgba(255,255,255,.08);padding:24px 24px 16px;animation:pop .2s ease-out}
+  .sheet .grip{display:none}
+}
+@keyframes pop{from{opacity:0;transform:translate(-50%,-47%)}to{opacity:1;transform:translate(-50%,-50%)}}
 .sheet .msg{min-height:18px;margin-top:10px;font-size:13px;color:var(--amber);text-align:center}
 .sheet .cancel{width:100%;margin-top:4px;padding:12px;border-radius:14px;color:var(--muted);font-size:14px}
 .sheet .ok{width:72px;height:72px;border-radius:50%;background:rgba(61,220,132,.15);display:grid;place-items:center;margin:10px auto 14px}
@@ -268,29 +277,6 @@ footer .legal a{color:var(--muted)}
   <div class="tiles" id="tiles"></div>
   <div class="tip" id="tip"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--green)"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><div><div class="k" id="tipK">SCHLEICHWEG-TIPP</div><div class="t" id="tipT">Zugdaten werden geholt …</div></div></div>
 
-  <section class="card meld" id="melden" aria-labelledby="meldT">
-    <div class="mh">
-      <svg width="44" height="24" viewBox="0 0 56 30" aria-hidden="true"><rect x="2" y="13" width="52" height="7" rx="3.5" fill="#fff"/><rect x="12" y="13" width="8" height="7" fill="#FF3B30"/><rect x="28" y="13" width="8" height="7" fill="#FF3B30"/><rect x="44" y="13" width="8" height="7" fill="#FF3B30"/><circle cx="6" cy="5" r="4" fill="#FF3B30"/></svg>
-      <div>
-        <div class="mk">SCHRANKENSTATUS MELDEN</div>
-        <div class="mtitle" id="meldT">Du stehst gerade an einer Schranke?</div>
-      </div>
-    </div>
-    <div class="ms">Sag kurz, ob sie gerade <b>zu</b> oder <b>offen</b> ist. Sobald zwei dasselbe melden, sehen es alle hier – und die Vorhersage wird mit jeder Meldung genauer.</div>
-    <div class="chips" id="inX" role="group" aria-label="Welcher Übergang?"></div>
-    <div class="in2">
-      <button class="inb zu" id="inZu" type="button"><span class="ld"></span>Ist ZU</button>
-      <button class="inb auf" id="inAuf" type="button"><span class="ld"></span>Ist OFFEN</button>
-    </div>
-    <div class="imsg" id="inMsg" role="status"></div>
-    <div class="offer" id="inOffer" hidden>
-      <div class="ot">Hilfst du kurz beim Messen?</div>
-      <div class="os">Tipp einfach, wenn der Zug über den Übergang fährt und wenn die Schranke aufgeht. So wird die Vorhersage für alle genauer.</div>
-      <div class="warnline">Nur zu Fuß, mit dem Rad oder als Beifahrer – nicht am Steuer.</div>
-      <div class="ob"><button type="button" class="no" data-mm-no>Nein danke</button><button type="button" class="yes" data-mm-yes>Mach ich</button></div>
-    </div>
-  </section>
-
   <section class="band" id="band" aria-label="Gleisband mit Zügen und Schranken"></section>
 
   <section class="card tlc">
@@ -327,30 +313,19 @@ footer .legal a{color:var(--muted)}
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
   <div class="grip"></div>
   <div id="sheetAsk">
-    <div class="st" id="sheetTitle">Ist die Schranke gerade zu oder offen?</div>
-    <div class="ss">Zeigt die Seite etwas anderes, als du siehst? Sag es uns – damit werden die Zeiten für alle genauer.</div>
-    <div class="sk">WELCHER ÜBERGANG?</div>
-    <div class="chips" id="repX"></div>
-    <div class="big2">
-      <button class="bigb zu" id="repZu" type="button">
-        <svg width="56" height="30" viewBox="0 0 56 30" aria-hidden="true"><rect x="2" y="13" width="52" height="7" rx="3.5" fill="#fff"/><rect x="12" y="13" width="8" height="7" fill="#FF3B30"/><rect x="28" y="13" width="8" height="7" fill="#FF3B30"/><rect x="44" y="13" width="8" height="7" fill="#FF3B30"/><circle cx="6" cy="5" r="4" fill="#FF3B30"/></svg>
-        <span>Ist gerade ZU</span>
-      </button>
-      <button class="bigb auf" id="repAuf" type="button">
-        <svg width="56" height="30" viewBox="0 0 56 30" aria-hidden="true"><path d="M20 15l8 8 18-18" fill="none" stroke="#3DDC84" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span>Ist gerade OFFEN</span>
-      </button>
-    </div>
+    <div class="st" id="sheetTitle">Was siehst du gerade?</div>
+    <div class="ss">Tipp bei der Schranke, an der du stehst. Sobald zwei dasselbe melden, sehen es alle.</div>
+    <div id="repRows" role="group" aria-label="Schranke melden" style="margin-top:8px"></div>
     <div class="msg" id="repMsg" role="status"></div>
     <button class="cancel" id="repCancel" type="button">Abbrechen</button>
   </div>
   <div id="sheetDone" hidden>
-    <div class="ok"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></div>
-    <div class="st" style="text-align:center">Danke, Nachbar!</div>
+    <div class="ok" id="doneOk1"><div class="party" id="doneParty"></div><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></div>
+    <div class="st" style="text-align:center" id="doneH">Danke, Nachbar!</div>
     <div class="ss" style="text-align:center" id="doneT"></div>
     <div class="offer" id="doneOffer" hidden>
-      <div class="ot">Hilfst du kurz beim Messen?</div>
-      <div class="os">Tipp einfach, wenn der Zug über den Übergang fährt und wenn die Schranke aufgeht. So wird die Vorhersage für alle genauer.</div>
+      <div class="ot">Hilfst du uns, das zu verbessern?</div>
+      <div class="os">Tipp jedes Mal, wenn ein Zug über den Übergang fährt – bei zwei oder drei Zügen eben zwei- oder dreimal – und zum Schluss, wenn die Schranke wieder offen ist.</div>
       <div class="warnline">Nur zu Fuß, mit dem Rad oder als Beifahrer – nicht am Steuer.</div>
       <div class="ob"><button type="button" class="no" data-mm-no>Nein danke</button><button type="button" class="yes" data-mm-yes>Mach ich</button></div>
     </div>
@@ -361,20 +336,21 @@ footer .legal a{color:var(--muted)}
 <div class="mm" id="mm" role="dialog" aria-modal="true" aria-labelledby="mmTitle" hidden>
   <div id="mmRun" class="mmin">
     <div class="mmk">MITMESSEN · <span id="mmX"></span></div>
-    <div class="mmt" id="mmTitle"></div>
-    <div class="mmsteps" id="mmSteps"><span class="on">gemeldet: zu</span><span>Zug drüber</span><span>Schranke auf</span></div>
+    <div class="mmt" id="mmTitle">Tipp bei jedem Zug – und wenn sie aufgeht</div>
+    <div class="ss">Kommen mehrere Züge, tippst du einfach mehrmals.</div>
     <div class="warnline">Nur zu Fuß, mit dem Rad oder als Beifahrer – nicht am Steuer.</div>
     <div style="flex:1"></div>
     <div class="mmsince" id="mmSince"></div>
-    <button type="button" class="mmbig zug" id="mmBig"><span id="mmK"></span><b id="mmL"></b></button>
+    <button type="button" class="mmbig zug" id="mmZug"><span id="mmCount"></span><b>Zug kam jetzt</b></button>
+    <button type="button" class="mmbig auf small" id="mmAuf"><b>Schranke ist offen</b></button>
     <div class="msg" id="mmMsg" role="status"></div>
     <button type="button" class="cancel" id="mmCancel">Abbrechen</button>
   </div>
   <div id="mmDone" class="mmin mmend" hidden>
-    <div class="ok"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></div>
+    <div class="ok" id="mmOk1"><div class="party" id="mmParty"></div><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></div>
     <div class="mmt">Super, danke!</div>
     <div class="ss" id="mmSum"></div>
-    <div class="ss" style="margin-top:10px">Deine Messung hilft, dass die Vorhersage hier bald genauer wird.</div>
+    <div class="ss" style="margin-top:10px">Richtig cool, dass du mitmachst – mit deiner Messung wird die Vorhersage für alle hier genauer.</div>
     <button type="button" class="done" id="mmOk">Fertig</button>
   </div>
 </div>
@@ -390,7 +366,6 @@ function select(id) {
   sel = id;
   try { localStorage.setItem("schranke", id); } catch (e) {}
   history.replaceState(null, "", "#" + id);
-  if (typeof renderRepX === "function") { repX = id; renderRepX(); }
   const c = CROSSINGS.find(x => x.id === id);
   map.flyTo([c.lat, c.lon], 16, {duration: 1.1});
   buildBand(); render();
@@ -438,6 +413,7 @@ function renderTiles(now) {
       <div class="lamp"></div><div class="nm">${c.short}</div><div class="tm">${tm}</div><div class="sb">${sb}</div>
       ${cnt ? `<div class="rep">${cnt}</div>` : ""}</button>`;
   }).join("");
+  $("fab").classList.toggle("hot", CROSSINGS.some(c => closedEff(c.id, now)));
 }
 document.addEventListener("click", e => { const b = e.target.closest(".tile"); if (b) select(b.dataset.id); });
 
@@ -722,92 +698,108 @@ function frame(ts) {
   requestAnimationFrame(frame);
 }
 // ---------- Melden ----------
-let repX = sel;
 function openSheet(view) {
   $("sheetBg").hidden = false; $("sheet").hidden = false;
   $("sheetAsk").hidden = view !== "ask"; $("sheetDone").hidden = view !== "done";
-  if (view === "ask") { repX = sel; $("repMsg").textContent = ""; renderRepX(); }
+  $("doneOffer").hidden = true;
+  if (view === "ask") { $("repMsg").textContent = ""; renderRepRows(); }
 }
 function closeSheet() { $("sheetBg").hidden = true; $("sheet").hidden = true; }
-function renderRepX() {
-  const html = CROSSINGS.map(c =>
-    `<button class="chip${c.id === repX ? " on" : ""}" data-x="${c.id}" aria-pressed="${c.id === repX}">${c.short}</button>`).join("");
-  $("repX").innerHTML = html; $("inX").innerHTML = html;
+// je Übergang: Name, was die Seite gerade sagt, ZU / OFFEN
+function renderRepRows() {
+  const now = nowD();
+  $("repRows").innerHTML = CROSSINGS.map(c => {
+    const zu = !!closedEff(c.id, now);
+    return `<div class="rrow"><div class="rn"><b>${c.short}</b><span class="${zu ? "zu" : ""}">laut Seite ${zu ? "zu" : "offen"}</span></div>
+      <button class="rb zu" type="button" data-x="${c.id}" data-s="zu" aria-label="${c.short}: ist zu">ZU</button>
+      <button class="rb auf" type="button" data-x="${c.id}" data-s="auf" aria-label="${c.short}: ist offen">OFFEN</button></div>`;
+  }).join("");
 }
-// where: "sheet" (Blatt vom schwebenden Knopf) oder "card" (Karte auf der Seite)
-async function sendReport(state, where) {
-  const c = CROSSINGS.find(x => x.id === repX), at = new Date();
-  const msg = where === "card" ? $("inMsg") : $("repMsg");
-  msg.className = where === "card" ? "imsg" : "msg"; msg.textContent = "wird gesendet …";
-  const res = await postJSON("/api/report", {crossing: repX, state, device: deviceId, snapshot: snapshotFor(repX, nowD())});
+// Konfetti aus dem Haken (nicht bei „Bewegung reduzieren“)
+function party(okId, partyId) {
+  const ok = $(okId); ok.classList.remove("pop"); void ok.offsetWidth; ok.classList.add("pop");
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const cols = ["#FF3B30", "#F2F3F7", "#3DDC84", "#FF8A3D"];
+  $(partyId).innerHTML = Array.from({length: 30}, (_, i) => {
+    const a = Math.random() * Math.PI * 2, d = 70 + Math.random() * 90;
+    return `<i style="--dx:${Math.round(Math.cos(a) * d)}px;--dy:${Math.round(Math.sin(a) * d - 40)}px;--r:${Math.round(Math.random() * 720 - 360)}deg;` +
+      `background:${cols[i % 4]};animation-delay:${(Math.random() * .15).toFixed(2)}s"></i>`;
+  }).join("");
+}
+async function sendReport(x, state) {
+  const c = CROSSINGS.find(k => k.id === x), at = new Date(), msg = $("repMsg");
+  // passt die Meldung zu dem, was die Seite gerade zeigt?
+  const shown = closedEff(x, nowD()) ? "zu" : "auf", match = shown === state;
+  msg.textContent = "wird gesendet …";
+  const res = await postJSON("/api/report", {crossing: x, state, device: deviceId, snapshot: snapshotFor(x, nowD())});
   if (res.ok) {
     if (res.data?.crossings) LIVE = res.data.crossings;
     const more = VISITORS.confirm - 1;
-    const txt = `${c.name}: ${state === "auf" ? "offen" : "zu"} um ${at.toLocaleTimeString("de-DE", {timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit"})} gemeldet. ` +
-      (more > 0 ? `Sobald ${more === 1 ? "noch jemand" : more + " weitere"} dasselbe meldet, sehen es alle.` : "Alle sehen es jetzt.");
-    if (where === "card") { msg.className = "imsg ok"; msg.textContent = "Danke! " + txt; }
-    else { $("doneT").textContent = txt; openSheet("done"); }
-    // Wer „zu“ meldet, steht an der Schranke: zum Mitmessen einladen (Zug drüber, Schranke auf)
-    if (state === "zu") offerMeasure(repX, +at, where);
+    const when = at.toLocaleTimeString("de-DE", {timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit"});
+    $("doneH").textContent = match ? "Danke, Nachbar!" : "Danke für den Hinweis!";
+    $("doneT").textContent = match
+      ? `${c.name} ${state === "auf" ? "offen" : "zu"} um ${when} – passt genau zur Vorhersage. Mit jeder Meldung wird die Nervschranke besser.`
+      : `${c.name} ${state === "auf" ? "offen" : "zu"} um ${when} – die Seite zeigt gerade „${shown === "zu" ? "zu" : "offen"}“. ` +
+        (more > 0 ? `Sobald ${more === 1 ? "noch jemand" : more + " weitere"} dasselbe meldet, sehen es alle.` : "Alle sehen es jetzt.");
+    openSheet("done");
+    party("doneOk1", "doneParty");
+    // Seite sagt offen, er sieht zu: Er steht an der Schranke – zum Mitmessen einladen (Züge, Schranke auf)
+    if (!match && state === "zu") offerMeasure(x, +at);
     render();
   } else {
     msg.textContent = res.status === 429 ? "Du hast gerade schon gemeldet – in einer Minute wieder." : "Melden klappt gerade nicht. Später nochmal?";
   }
 }
 // ---------- Mitmessen ----------
-let MM = null;   // {x, t0, step, tZug}
-function offerMeasure(x, t0, where) {
-  const box = where === "card" ? $("inOffer") : $("doneOffer");
+let MM = null;   // {x, t0, trains, last, busy}
+function offerMeasure(x, t0) {
+  const box = $("doneOffer");
   box.hidden = false;
-  box.querySelector("[data-mm-yes]").onclick = () => { box.hidden = true; if (where !== "card") closeSheet(); startMeasure(x, t0); };
+  box.querySelector("[data-mm-yes]").onclick = () => { box.hidden = true; closeSheet(); startMeasure(x, t0); };
   box.querySelector("[data-mm-no]").onclick = () => { box.hidden = true; };
 }
 function startMeasure(x, t0) {
-  MM = {x, t0, step: 0, tZug: null};
+  MM = {x, t0, trains: 0, last: 0, busy: false};
   $("mm").hidden = false; $("mmDone").hidden = true; $("mmRun").hidden = false;
   $("mmX").textContent = CROSSINGS.find(c => c.id === x).name.toUpperCase();
   renderMeasure();
 }
 function renderMeasure() {
   if (!MM) return;
-  const s = MM.step;
-  $("mmTitle").textContent = s === 0 ? "Tipp, wenn der Zug über den Übergang fährt" : "Und jetzt, wenn die Schranke hochgeht";
-  $("mmK").textContent = s === 0 ? "SCHRITT 1 VON 2" : "SCHRITT 2 VON 2";
-  $("mmL").textContent = s === 0 ? "Zug fährt drüber" : "Schranke geht auf";
-  $("mmBig").className = "mmbig " + (s === 0 ? "zug" : "auf");
-  [...document.querySelectorAll("#mmSteps span")].forEach((e, i) => e.classList.toggle("on", i <= s));
+  $("mmCount").textContent = MM.trains ? `${MM.trains} ${MM.trains > 1 ? "ZÜGE" : "ZUG"} GEZÄHLT · NOCH EINER?` : "BEI JEDEM ZUG EINMAL TIPPEN";
   $("mmMsg").textContent = "";
 }
 setInterval(() => { if (MM && !$("mm").hidden) $("mmSince").textContent = "zu seit " + mmss(Date.now() - MM.t0); }, 1000);
-$("mmBig").addEventListener("click", async () => {
-  if (!MM) return;
-  const state = MM.step === 0 ? "zug" : "auf", t = Date.now();
-  const res = await postJSON("/api/report", {crossing: MM.x, state, exact: true, device: deviceId, snapshot: snapshotFor(MM.x, nowD())});
-  if (!res.ok && res.status !== 429) { $("mmMsg").textContent = res.status === 409 ? "Das ging nicht – bitte erst „Ist ZU“ melden." : "Speichern hat nicht geklappt, nochmal?"; return; }
+// state: "zug" (beliebig oft, je Zug einmal) oder "auf" (Schluss)
+async function measure(state) {
+  if (!MM || MM.busy) return;
+  const t = Date.now();
+  if (state === "zug" && t - MM.last < 5000) { $("mmMsg").textContent = "Gerade gezählt – kommt noch ein Zug, tipp dann nochmal."; return; }
+  MM.busy = true;
+  const res = await postJSON("/api/report", {crossing: MM.x, state, exact: true, device: deviceId, snapshot: snapshotFor(MM.x, nowD(), state)});
+  MM.busy = false;
+  if (!res.ok && res.status !== 429) { $("mmMsg").textContent = res.status === 409 ? "Das ging nicht – bitte erst „ZU“ melden." : "Speichern hat nicht geklappt, nochmal?"; return; }
   if (navigator.vibrate) navigator.vibrate(40);
-  if (MM.step === 0) { MM.tZug = t; MM.step = 1; renderMeasure(); return; }
-  const zu = mmss(t - MM.t0), zug = MM.tZug ? mmss(MM.tZug - MM.t0) : null, after = MM.tZug ? Math.round((t - MM.tZug) / 1000) : null;
-  $("mmSum").textContent = `Zu war sie mindestens ${zu} Min.` + (zug ? ` – der Zug kam ${zug} nach deiner Meldung, ${after} s später ging sie auf.` : "");
+  if (state === "zug") {
+    MM.trains++; MM.last = t;
+    const b = $("mmZug"); b.classList.remove("hit"); void b.offsetWidth; b.classList.add("hit");
+    renderMeasure(); return;
+  }
+  const n = MM.trains;
+  $("mmSum").textContent = `Zu war sie mindestens ${mmss(t - MM.t0)} Min.` + (n ? ` – in der Zeit ${n === 1 ? "ist ein Zug" : "sind " + n + " Züge"} drübergefahren.` : "");
   $("mmRun").hidden = true; $("mmDone").hidden = false; MM = null;
-});
+  party("mmOk1", "mmParty");
+}
+$("mmZug").addEventListener("click", () => measure("zug"));
+$("mmAuf").addEventListener("click", () => measure("auf"));
 $("mmCancel").addEventListener("click", () => { MM = null; $("mm").hidden = true; });
 $("mmOk").addEventListener("click", () => { $("mm").hidden = true; });
 
 $("fab").addEventListener("click", () => openSheet("ask"));
-$("inZu").addEventListener("click", () => sendReport("zu", "card"));
-$("inAuf").addEventListener("click", () => sendReport("auf", "card"));
-$("inX").addEventListener("click", e => { const b = e.target.closest("[data-x]"); if (b) { repX = b.dataset.x; renderRepX(); $("inMsg").textContent = ""; } });
-renderRepX();
-// schwebenden Knopf nur zeigen, wenn die Melde-Karte nicht zu sehen ist
-if ("IntersectionObserver" in window) {
-  new IntersectionObserver(es => es.forEach(e => $("fab").classList.toggle("away", e.isIntersecting)), {threshold: 0.3}).observe($("melden"));
-}
 $("sheetBg").addEventListener("click", closeSheet);
 $("repCancel").addEventListener("click", closeSheet);
 $("doneOk").addEventListener("click", closeSheet);
-$("repZu").addEventListener("click", () => sendReport("zu"));
-$("repAuf").addEventListener("click", () => sendReport("auf"));
-$("repX").addEventListener("click", e => { const b = e.target.closest("[data-x]"); if (b) { repX = b.dataset.x; renderRepX(); } });
+$("repRows").addEventListener("click", e => { const b = e.target.closest("[data-s]"); if (b) sendReport(b.dataset.x, b.dataset.s); });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("sheet").hidden) closeSheet(); });
 
 // ---------- Start ----------

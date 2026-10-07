@@ -310,10 +310,13 @@ async function loadConfig() {
 }
 
 // Für Meldungen: welcher Zug gehört gerade zu diesem Übergang (der nächste zur Sperrzeit, max. 15 Min.)?
-function snapshotFor(id, d) {
+// Bei mehreren Zügen in einer Sperrung: „zug“ = der mit der Durchfahrt am nächsten an jetzt,
+// „auf“ = der, dessen Sperrung am nächsten an jetzt endet – sonst landeten alle Messungen beim ersten Zug.
+function snapshotFor(id, d, state) {
   let best = null, bestD = 15 * 60000;
   for (const p of passes[id] || []) {
-    const dist = d < p.closeFrom ? p.closeFrom - d : d > p.closeTo ? d - p.closeTo : 0;
+    const dist = state === "zug" ? Math.abs(p.pass - d) : state === "auf" ? (d < p.closeFrom ? p.closeFrom - d : Math.abs(d - p.closeTo))
+      : d < p.closeFrom ? p.closeFrom - d : d > p.closeTo ? d - p.closeTo : 0;
     if (dist < bestD) { bestD = dist; best = p; }
   }
   if (!best) return null;

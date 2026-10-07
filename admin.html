@@ -310,7 +310,7 @@ function renderMessen() {
 
 // exact = genauer Moment (für die Schließzeiten), sonst Beobachtung (nur „stimmt / stimmt nicht“)
 async function measure(state, exact = true) {
-  const snap = snapshotFor(xid, new Date());
+  const snap = snapshotFor(xid, new Date(), exact && state !== "zu" ? state : undefined);
   const res = await postJSON("/api/admin/report", {crossing: xid, state, exact, snapshot: snap});
   if (res.status === 401) { location.reload(); return; }
   if (!res.ok) { toast("Speichern hat nicht geklappt"); return false; }

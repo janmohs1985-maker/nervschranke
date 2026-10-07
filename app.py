@@ -702,16 +702,18 @@ async def report(request: Request):
     cfg = get_config()["visitors"]
     now = time.time()
     if exact:
-        # Mitmessen nach einer Meldung: „Zug fährt drüber“ / „Schranke geht auf“ – nur mit Geräte-Kennung,
-        # nur nach eigener „zu“-Meldung an diesem Übergang (max. 20 Min. her), jeder Schritt einmal
+        # Mitmessen nach einer Meldung: „Zug kam jetzt“ (je Zug einmal, bei mehreren Zügen mehrmals) und zum
+        # Schluss „Schranke ist offen“ – nur mit Geräte-Kennung, nur nach eigener „zu“-Meldung an diesem
+        # Übergang (max. 20 Min. her). Nach „offen“ ist die Messung vorbei.
         if state == "zu" or not device:
             raise HTTPException(400, "ungültig")
         start = db("SELECT ts FROM reports WHERE source='visitor' AND exact=0 AND state='zu' AND device=? AND crossing=? AND ts > ? "
                    "ORDER BY ts DESC LIMIT 1", (device, crossing, now - 1200), one=True)
         if not start:
             raise HTTPException(409, "Bitte zuerst melden, dass die Schranke zu ist.")
-        if db("SELECT 1 FROM reports WHERE source='visitor' AND exact=1 AND state=? AND device=? AND ts > ?",
-              (state, device, start["ts"]), one=True):
+        done = db("SELECT state, ts FROM reports WHERE source='visitor' AND exact=1 AND device=? AND ts > ?", (device, start["ts"]))
+        trains = [r["ts"] for r in done if r["state"] == "zug"]
+        if any(r["state"] == "auf" for r in done) or (state == "zug" and (len(trains) >= 5 or (trains and now - max(trains) < 5))):
             raise HTTPException(429, "Schon gemessen.")
     else:
         # pro Gerät 1 Meldung je `rate` Sekunden; pro Anschluss (IP) höchstens 5, damit z. B. eine Familie
