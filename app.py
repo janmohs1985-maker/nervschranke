@@ -551,8 +551,8 @@ async def state():
 # Jede Minute rechnet der Server einmal (auch ohne Besucher), merkt sich die Durchfahrten (3 Tage) und prüft
 # sie mit checks.py. Bei einer Auffälligkeit werden auch die Rohdaten (Transitous + DB) aufgehoben (14 Tage),
 # damit sich der Fall später genau nachrechnen lässt. Nur Zugdaten, nichts über Besucher.
-# Abrufbar ohne Anmeldung unter /api/diag (Auffälligkeiten), /api/diag/at (Stand zu einem Zeitpunkt),
-# /api/diag/raw/<id> (Rohdaten).
+# Abrufbar mit Admin-Anmeldung unter /api/admin/diag (Auffälligkeiten), /api/admin/diag/at (Stand zu einem
+# Zeitpunkt), /api/admin/diag/raw/<id> (Rohdaten).
 HISTORY_DAYS, ANOMALY_DAYS = 3, 14
 _prev_state = [None]
 
@@ -624,9 +624,10 @@ def _local(ts):
     return datetime.fromtimestamp(ts, TZ).strftime("%d.%m. %H:%M:%S") if ts else None
 
 
-@app.get("/api/diag")
-def diag(hours: float = 24, kind: str = ""):
+@app.get("/api/admin/diag")
+def diag(request: Request, hours: float = 24, kind: str = ""):
     """Auffälligkeiten der letzten Stunden (neueste zuerst)."""
+    need_admin(request)
     since = time.time() - min(hours, ANOMALY_DAYS * 24) * 3600
     rows = db("SELECT * FROM anomalies WHERE ts > ? AND (?='' OR kind=?) ORDER BY ts DESC LIMIT 500", (since, kind, kind))
     count = {}
@@ -639,9 +640,10 @@ def diag(hours: float = 24, kind: str = ""):
                                        for r in rows]}, headers=NOCACHE)
 
 
-@app.get("/api/diag/at")
-def diag_at(t: str):
+@app.get("/api/admin/diag/at")
+def diag_at(request: Request, t: str):
     """Stand der Rechnung zu einem Zeitpunkt (nächste gespeicherte Minute davor), Zeiten als deutsche Uhrzeit."""
+    need_admin(request)
     try:
         ts = _t(t)
     except ValueError:
@@ -661,9 +663,10 @@ def diag_at(t: str):
     return JSONResponse(s, headers=NOCACHE)
 
 
-@app.get("/api/diag/raw/{rid}")
-def diag_raw(rid: int):
+@app.get("/api/admin/diag/raw/{rid}")
+def diag_raw(request: Request, rid: int):
     """Rohdaten (Transitous-Abschnitte + DB-Echtzeit) zu einer Auffälligkeit – zum Nachrechnen mit model.compute."""
+    need_admin(request)
     row = db("SELECT ts, data FROM rawdata WHERE id=?", (rid,), one=True)
     if not row:
         raise HTTPException(404, "nicht gefunden")

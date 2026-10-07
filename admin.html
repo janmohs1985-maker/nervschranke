@@ -197,7 +197,7 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
         <div class="card">
           <div class="ct"><b>Auffälligkeiten</b><span class="muted" style="font-size:12px" id="diagWhen">24 h</span></div>
           <div id="diag"></div>
-          <div class="mini">Der Server prüft jede Minute, ob die Rechnung so sein kann (z. B. Wald zu, beide anderen offen; Zug fehlt an einem Übergang; Zug plötzlich verschwunden). Auch abrufbar unter <span class="mono">/api/diag</span>.</div>
+          <div class="mini">Der Server prüft jede Minute, ob die Rechnung so sein kann (z. B. Wald zu, beide anderen offen; Zug fehlt an einem Übergang; Zug plötzlich verschwunden). Auch abrufbar unter <span class="mono">/api/admin/diag</span>.</div>
         </div>
         <div class="card">
           <div class="ct"><b>Letzte Meldungen</b></div>
@@ -383,7 +383,7 @@ const DIAG_KINDS = {wald_allein: "Wald allein zu", fehlt: "Zug fehlt", reihenfol
   sprung: "Zeit gesprungen", aussortiert: "Doppelter Zug aussortiert", zu_lang: "Sperrung sehr lang", verkehrt: "Sperrung verkehrt"};
 async function loadDiag() {
   try {
-    const d = await (await fetch("/api/diag?hours=24", {cache: "no-store"})).json();
+    const d = await (await fetch("/api/admin/diag?hours=24", {cache: "no-store"})).json();
     $("diagWhen").textContent = "24 h · geprüft " + (d.lastCheck ? d.lastCheck.slice(-8, -3) : "noch nie");
     $("diag").innerHTML = d.anomalies.length ? d.anomalies.slice(0, 30).map(a => `<div class="row" style="display:block;padding:8px 16px">
         <div><b>${esc(DIAG_KINDS[a.kind] || a.kind)}</b> <span class="muted" style="font-size:12px">${esc(a.at || a.seen)}</span></div>
