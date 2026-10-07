@@ -139,6 +139,9 @@ def profile_time(s, L, D, mode):
     return inv(s) if mode == "ab" else D - inv(L - s)
 
 
+SRC_RANK = {"db": 0, "rt": 1, "plan": 2}
+
+
 def compute(raw, rt, model, timing=None):
     timing = timing or {}
     P = {c["id"]: [] for c in CROSSINGS}
@@ -246,12 +249,20 @@ def compute(raw, rt, model, timing=None):
             key = f"{name}|{dep // 60000}|{westbound}"
             plat = r["pl"] or (("3" if stops and not is_long else "2") if westbound else "1")
             mode = "ab" if from_here else "an" if to_here else None
-            twin = any(x["westbound"] == westbound and ((abs(x["dep"] - dep) < 60000 and abs(x["arr"] - arr) < 60000) or
-                                                     (num and x["num"] == num and x["dep"] < arr and dep < x["arr"])) for x in S)
-            if not twin and key not in seen_seg:
+            seg = {"id": key, "trip": trip, "name": name, "num": num, "label": label, "kind": kind,
+                   "westbound": westbound, "dep": dep, "arr": arr, "poly": s["polyline"], "plat": plat, "mode": mode,
+                   "src": "db" if r["db"] else "rt" if s.get("realTime") else "plan"}
+            twin = next((i for i, x in enumerate(S) if x["westbound"] == westbound and (
+                (abs(x["dep"] - dep) < 60000 and abs(x["arr"] - arr) < 60000) or
+                (num and x["num"] == num and x["dep"] < arr and dep < x["arr"]))), None)
+            if twin is not None:
+                # gleicher Zug doppelt: der mit der besseren Zeitangabe bleibt (beobachtet 7.10.2026: ICE 912 +4 –
+                # die Fahrplan-Kopie war zuerst da, fuhr 4 Min. zu früh durchs Gleisband und verschwand dann)
+                if SRC_RANK[seg["src"]] < SRC_RANK[S[twin]["src"]]:
+                    S[twin] = seg
+            elif key not in seen_seg:
                 seen_seg.add(key)
-                S.append({"id": key, "trip": trip, "name": name, "num": num, "label": label, "kind": kind,
-                          "westbound": westbound, "dep": dep, "arr": arr, "poly": s["polyline"], "plat": plat, "mode": mode})
+                S.append(seg)
 
     # derselbe Zug (gleiche Nummer, gleiche Richtung) doppelt mit weit auseinanderliegenden Zeiten – nur der mit
     # der besten Zeitangabe zählt (beobachtet 7.10.2026: ICE 9576 einmal nach Fahrplan 07:56 und einmal mit
