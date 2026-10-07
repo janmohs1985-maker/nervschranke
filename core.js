@@ -395,3 +395,36 @@ function liveTrains(d) {
   }
   return out;
 }
+
+// ---------- Meldungen (Seite und Admin) ----------
+// Bestätigte Meldungen (genug Geräte, Jan oder „Schranke ist offen“ beim Mitmessen) gehen vor die Schätzung –
+// höchstens 3 Minuten und nur bis zum nächsten erwarteten Wechsel: „offen“ bis die nächste Sperrung beginnt,
+// „zu“ während einer Sperrung nur bis zu deren Ende.
+let LIVE = {};
+async function pollLive() {
+  try {
+    const r = await fetch("/api/live", {cache: "no-store"});
+    if (!r.ok) return;
+    const d = await r.json();
+    LIVE = d.live === false ? {} : d.crossings || {};
+  } catch (e) { /* ohne Server keine Meldungen */ }
+}
+function reported(id) {
+  const l = LIVE[id];
+  if (!l || !l.state || !l.at || Date.now() / 1000 - l.at > 180) return null;
+  const at = l.at * 1000, now = +nowD(), w = mergedWindows(id);
+  if (l.state === "auf") {
+    const next = w.find(x => x.closeFrom > at);
+    if (next && now >= next.closeFrom) return null;
+  } else {
+    const cur = w.find(x => x.closeFrom <= at && x.closeTo >= at);
+    if (cur && now > cur.closeTo) return null;
+  }
+  return l.state;
+}
+function closedEff(id, now) {
+  const m = closedAt(id, now), r = reported(id);
+  if (r === "auf") return null;
+  if (r === "zu" && !m) return {reported: true, closeTo: null};
+  return m;
+}

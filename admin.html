@@ -29,6 +29,12 @@ h1{font-size:26px;font-weight:700;letter-spacing:-.02em;margin-top:4px}
 .seg{display:grid;gap:4px;background:var(--card);padding:4px;border-radius:14px;border:1px solid var(--stroke)}
 .seg button{padding:11px 6px;border-radius:11px;font-weight:600;font-size:14px;color:var(--muted)}
 .seg button.on{background:#2A2D38;color:var(--text)}
+/* Schranken-Auswahl zeigt zugleich, was die Seite gerade allen anzeigt */
+#xsel button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:9px 10px;text-align:left}
+#xsel .xs{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;font-weight:700}
+#xsel .xs i{width:8px;height:8px;border-radius:50%;flex:none}
+#xsel .xs.zu{color:var(--redtxt)}#xsel .xs.zu i{background:var(--red)}
+#xsel .xs.auf{color:var(--green)}#xsel .xs.auf i{background:var(--green)}
 .card{background:var(--card);border:1px solid var(--stroke);border-radius:20px}
 .h{font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--dim);margin:4px 4px -6px;text-transform:uppercase}
 .mono{font-family:var(--mono)}
@@ -50,6 +56,23 @@ h1{font-size:26px;font-weight:700;letter-spacing:-.02em;margin-top:4px}
 .btn2.obs.zu{border-color:rgba(255,59,48,.35)}
 .btn2.obs.auf{border-color:rgba(61,220,132,.35)}
 .btn2{padding:14px;border-radius:16px;background:var(--card);border:1px solid rgba(255,255,255,.08);font-weight:600;font-size:14px}
+/* Messen in drei Schritten: was als Nächstes dran ist, ist groß – der Rest klein und blass, aber tippbar */
+.steps{display:flex;gap:4px}
+.steps span{flex:1;text-align:center;font-size:12px;font-weight:600;padding:7px 0;border-radius:10px;background:var(--card);color:var(--dim)}
+.steps .done{color:var(--green)}.steps .now{background:#2A2D38;color:var(--text)}
+.mtimer{text-align:center;font-family:var(--mono);font-size:14px;color:var(--muted);min-height:18px}
+.big.step{height:150px;animation:none}
+.big.step .l{font-size:36px}
+.big.step .s{font-family:inherit;font-size:13px}
+.big.step.dim,.mid.dim{height:64px;opacity:.45}
+.big.step.dim .l{font-size:20px}.big.step.dim .s{display:none}
+.mid{height:120px;border-radius:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:22px;font-weight:700}
+.mid small{font-size:12px;font-weight:600;opacity:.75}
+.mid.dim small{display:none}
+.mid.pz{background:#1B2440;border:2px solid rgba(122,162,255,.6)}
+.mid.gz{background:#2A2014;border:2px solid rgba(255,176,32,.55)}
+.mid:active,.big.step:active{transform:scale(.98)}
+.undo{width:100%;padding:12px;border-radius:14px;border:1px solid var(--stroke);color:var(--muted);font-size:13px;font-weight:600}
 .row{display:flex;align-items:center;gap:10px;padding:10px 14px}
 .row + .row{border-top:1px solid var(--stroke)}
 .dot{width:9px;height:9px;border-radius:50%;flex:none}
@@ -121,16 +144,20 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
       <div><div class="lbl">MODELL SAGT</div><div style="font-size:15px;font-weight:600;margin-top:2px" id="modelTxt">lädt …</div></div>
       <div style="text-align:right"><div class="lbl">ZUG</div><div style="display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:2px" id="trainTxt">–</div></div>
     </div>
-    <button class="big auf" id="big" type="button"><div class="k" id="bigK">SCHRANKE IST AUF</div><div class="l" id="bigL">Geht gerade ZU</div><div class="s" id="bigS">genau im Moment tippen, wenn sie runtergeht</div></button>
+    <div class="steps" id="steps"><span>1 · geht zu</span><span>2 · Zug</span><span>3 · geht auf</span></div>
+    <div class="mtimer" id="mtimer"></div>
+    <button class="big zu step" id="bZu" type="button"><div class="l">Geht gerade ZU</div><div class="s">genau im Moment tippen, wenn sie runtergeht</div></button>
+    <div class="two">
+      <button class="mid pz" id="bPz" type="button">Personenzug<small>fährt drüber</small></button>
+      <button class="mid gz" id="bGz" type="button">Güterzug<small>fährt drüber</small></button>
+    </div>
+    <button class="big auf step" id="bAuf" type="button"><div class="l">Geht gerade AUF</div><div class="s">genau im Moment tippen, wenn sie hochgeht</div></button>
     <div class="lbl" style="margin:2px 4px -6px">KOMME GERADE AN – SIE WAR SCHON …</div>
     <div class="two">
       <button class="btn2 obs zu" id="obsZu" type="button"><span class="dot" style="display:inline-block;background:var(--red);margin-right:8px"></span>Ist schon zu</button>
-      <button class="btn2 obs auf" id="obsAuf" type="button"><span class="dot" style="display:inline-block;background:var(--green);margin-right:8px"></span>Ist schon auf</button>
+      <button class="btn2 obs auf" id="obsAuf" type="button"><span class="dot" style="display:inline-block;background:var(--green);margin-right:8px"></span>Ist schon offen</button>
     </div>
-    <div class="two">
-      <button class="btn2" id="zug" type="button">Zug fährt gerade drüber</button>
-      <button class="btn2 muted" id="undo" type="button">Letzte rückgängig</button>
-    </div>
+    <button class="undo" id="undo" type="button">↶ Rückgängig</button>
     <div class="h">Heute gemessen</div>
     <div class="card" id="today"><div class="row muted">noch nichts</div></div>
   </section>
@@ -251,8 +278,21 @@ let tab = "messen";
 let xid = (() => { try { return localStorage.getItem("nsAdminX") || "elchinger"; } catch (e) { return "elchinger"; } })();
 let analysis = null, reportsData = [], lastId = null;
 
+// je Schranke: Name + was die Seite gerade allen zeigt (Punkt + Zeit, wie die Kacheln)
+function xStatus(id, now) {
+  if (!loaded) return {cls: "", txt: "lädt"};
+  const z = closedEff(id, now), n = nextAt(id, now), r = reported(id);
+  if (z) return {cls: "zu", txt: z.closeTo ? "zu · " + mmss(z.closeTo - now) : "zu · gemeldet"};
+  if (r === "auf") return {cls: "auf", txt: "offen · gemeldet"};
+  return {cls: "auf", txt: n && n.closeFrom - now < 90 * 60000 ? "offen · " + mmss(n.closeFrom - now) : "offen"};
+}
+function renderXsel() {
+  const now = new Date();
+  $("xsel").innerHTML = CROSSINGS.map(c => { const s = xStatus(c.id, now);
+    return `<button data-x="${c.id}" class="${c.id === xid ? "on" : ""}">${c.short}<span class="xs ${s.cls}"><i></i>${s.txt}</span></button>`; }).join("");
+}
 function renderSel() {
-  $("xsel").innerHTML = CROSSINGS.map(c => `<button data-x="${c.id}" class="${c.id === xid ? "on" : ""}">${c.short}</button>`).join("");
+  renderXsel();
   $("tabs").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
   $("messen").style.display = tab === "messen" ? "flex" : "none";
   $("auswertung").hidden = tab !== "auswertung"; $("auswertung").style.display = tab === "auswertung" ? "flex" : "none";
@@ -298,46 +338,66 @@ function setMState(s) { try { localStorage.setItem("nsMess_" + xid, JSON.stringi
 
 function renderMessen() {
   const now = new Date(), s = mState();
-  const z = closedAt(xid, now), n = nextAt(xid, now), snap = snapshotFor(xid, now);
-  $("modelTxt").textContent = !loaded ? "lädt …" : z ? `zu bis ~${hm(z.closeTo)}:${String(z.closeTo.getSeconds()).padStart(2, "0")}`
-    : n ? `offen · zu ab ~${hm(n.closeFrom)}:${String(n.closeFrom.getSeconds()).padStart(2, "0")}` : "offen · kein Zug in Sicht";
+  renderXsel();
+  const z = closedEff(xid, now), n = nextAt(xid, now), snap = snapshotFor(xid, now);
+  const sec = d => `${hm(d)}:${String(d.getSeconds()).padStart(2, "0")}`;
+  $("modelTxt").textContent = !loaded ? "lädt …" : z ? (z.closeTo ? `zu bis ~${sec(z.closeTo)}` : "zu (gemeldet)")
+    : n ? `offen · zu ab ~${sec(n.closeFrom)}` : "offen · kein Zug in Sicht";
   $("trainTxt").innerHTML = snap ? `<span class="badge">${esc(snap.name)}</span><span class="mono" style="font-weight:700">${hm(new Date(snap.pass))}</span>` : "–";
-  const big = $("big");
-  big.className = "big " + (s.zu ? "zu" : "auf");
-  $("bigK").textContent = !s.zu ? "SCHRANKE IST AUF"
-    : s.exact ? "SCHRANKE IST ZU SEIT " + fmtS((Date.now() - s.since) / 1000) : "SCHRANKE IST ZU · BEGINN UNBEKANNT";
-  $("bigL").textContent = s.zu ? "Geht gerade AUF" : "Geht gerade ZU";
-  $("bigS").textContent = s.zu ? "genau im Moment tippen, wenn sie hochgeht" : "genau im Moment tippen, wenn sie runtergeht";
+  // Schritt: 1 = warten auf „zu“, 2/3 = Zug zählen bzw. „auf“
+  const zu = !!s.zu;
+  const st = $("steps").children;
+  st[0].className = zu ? "done" : "now"; st[0].textContent = zu ? (s.exact ? "✓ zu " + hms(s.since / 1000) : "✓ war schon zu") : "1 · geht zu";
+  st[1].className = zu ? "now" : ""; st[1].textContent = s.trains ? `2 · Zug (${s.trains})` : "2 · Zug";
+  st[2].className = zu ? "now" : "";
+  $("bZu").classList.toggle("dim", zu);
+  $("bPz").classList.toggle("dim", !zu); $("bGz").classList.toggle("dim", !zu);
+  $("bAuf").classList.toggle("dim", !zu);
+  const tr = s.trains ? ` · ${s.trains} ${s.trains > 1 ? "Züge" : "Zug"} gezählt${s.freight ? ` (${s.freight} Güter)` : ""}` : "";
+  $("mtimer").textContent = zu ? (s.exact ? "zu seit " + fmtS((Date.now() - s.since) / 1000) : "zu, Beginn unbekannt") + tr : "";
+  $("undo").textContent = lastAct ? `↶ Rückgängig: „${lastAct.text}“ um ${hms(lastAct.ts / 1000)}` : "↶ Rückgängig";
 }
 
 // exact = genauer Moment (für die Schließzeiten), sonst Beobachtung (nur „stimmt / stimmt nicht“)
-async function measure(state, exact = true) {
-  const snap = snapshotFor(xid, new Date(), exact && state !== "zu" ? state : undefined);
-  const res = await postJSON("/api/admin/report", {crossing: xid, state, exact, snapshot: snap});
+// train: bei „zug“ „personen“/„gueter“, bei „auf“ die Art des letzten Zugs
+let lastAct = null;
+async function measure(state, exact = true, train = null, text = "") {
+  const snap = train === "gueter" ? null : snapshotFor(xid, new Date(), exact && state !== "zu" ? state : undefined);
+  const res = await postJSON("/api/admin/report", {crossing: xid, state, exact, snapshot: snap, train});
   if (res.status === 401) { location.reload(); return; }
   if (!res.ok) { toast("Speichern hat nicht geklappt"); return false; }
-  lastId = res.data.id;
+  lastId = res.data.id; lastAct = {id: res.data.id, text, ts: Date.now()};
   if (navigator.vibrate) navigator.vibrate(40);
   if (res.data.dup) { toast("Schon gemerkt – doppelt getippt zählt nur einmal"); return true; }
-  toast(state === "zug" ? "Zug gemerkt" : (exact ? `Moment „${state}“ gemerkt` : `„ist ${state}“ gemerkt`) + (snap ? "" : " – kein Zug in der Nähe"));
+  toast(`„${text}“ gemerkt` + (snap || train === "gueter" ? "" : " – kein Zug in der Nähe"));
   loadToday();
   return true;
 }
-$("big").addEventListener("click", async () => {
-  const s = mState(), next = s.zu ? "auf" : "zu";
-  if (await measure(next, true)) { setMState({zu: next === "zu", exact: true, since: Date.now()}); renderMessen(); }
+$("bZu").addEventListener("click", async () => {
+  if (await measure("zu", true, null, "geht zu")) { setMState({zu: true, exact: true, since: Date.now(), trains: 0, freight: 0}); renderMessen(); }
+});
+for (const [id, type, text] of [["bPz", "personen", "Personenzug"], ["bGz", "gueter", "Güterzug"]]) {
+  $(id).addEventListener("click", async () => {
+    const s = mState();
+    if (await measure("zug", true, type, text)) {
+      setMState({...s, zu: true, since: s.since || Date.now(), trains: (s.trains || 0) + 1, freight: (s.freight || 0) + (type === "gueter" ? 1 : 0), lastType: type});
+      renderMessen();
+    }
+  });
+}
+$("bAuf").addEventListener("click", async () => {
+  if (await measure("auf", true, mState().lastType || null, "geht auf")) { setMState({}); renderMessen(); }
 });
 $("obsZu").addEventListener("click", async () => {
-  if (await measure("zu", false)) { setMState({zu: true, exact: false, since: Date.now()}); renderMessen(); }
+  if (await measure("zu", false, null, "ist schon zu")) { setMState({zu: true, exact: false, since: Date.now(), trains: 0, freight: 0}); renderMessen(); }
 });
 $("obsAuf").addEventListener("click", async () => {
-  if (await measure("auf", false)) { setMState({}); renderMessen(); }
+  if (await measure("auf", false, null, "ist schon offen")) { setMState({}); renderMessen(); }
 });
-$("zug").addEventListener("click", () => measure("zug"));
 $("undo").addEventListener("click", async () => {
   if (!lastId) { toast("Nichts zum Rückgängigmachen"); return; }
   await fetch("/api/admin/report/" + lastId, {method: "DELETE"});
-  lastId = null; setMState({}); renderMessen(); loadToday(); toast("Gelöscht");
+  lastId = null; lastAct = null; setMState({}); renderMessen(); loadToday(); toast("Gelöscht");
 });
 
 async function loadToday() {
@@ -497,6 +557,9 @@ loadConfig().then(refresh);
 loadToday();
 setInterval(refresh, 30000);
 setInterval(renderMessen, 1000);
+// bestätigte Meldungen wie auf der Seite (für den Status in der Schranken-Auswahl)
+pollLive();
+setInterval(pollLive, 15000);
 </script>
 </body>
 </html>

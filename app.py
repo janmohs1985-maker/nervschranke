@@ -854,15 +854,19 @@ async def admin_report(request: Request):
     if crossing not in CROSSINGS or state not in STATES:
         raise HTTPException(400, "ungültig")
     exact = 1 if body.get("exact", True) or state == "zug" else 0
+    # Zugart beim Messen: „personen“ oder „gueter“ (bei „auf“ die des letzten Zugs) – Güterzüge zählen nicht fürs Lernen
+    traintype = body.get("train") if exact and body.get("train") in ("personen", "gueter") else None
     now = time.time()
     with _db_lock:
         # doppelt getippt: dieselbe Messung am selben Übergang innerhalb einer Minute zählt nur einmal
+        # (Zug drüber: nur 5 s – es können mehrere Züge kurz nacheinander kommen)
         dup = _db.execute("SELECT id FROM reports WHERE source='admin' AND crossing=? AND state=? AND exact=? AND ts > ? "
-                          "ORDER BY ts DESC LIMIT 1", (crossing, state, exact, now - 60)).fetchone()
+                          "ORDER BY ts DESC LIMIT 1", (crossing, state, exact, now - (5 if state == "zug" else 60))).fetchone()
         if dup:
             return {"ok": True, "id": dup["id"], "dup": True}
-        cur = _db.execute("INSERT INTO reports(ts, crossing, state, source, device, iphash, snapshot, exact) VALUES(?,?,?,?,?,?,?,?)",
-                          (now, crossing, state, "admin", "jan", "", clean_snapshot(body.get("snapshot")), exact))
+        cur = _db.execute("INSERT INTO reports(ts, crossing, state, source, device, iphash, snapshot, exact, traintype) VALUES(?,?,?,?,?,?,?,?,?)",
+                          (now, crossing, state, "admin", "jan", "", None if traintype == "gueter" else clean_snapshot(body.get("snapshot")),
+                           exact, traintype))
         _db.commit()
         rid = cur.lastrowid
     learn_invalidate()
