@@ -18,6 +18,7 @@ import zlib
 
 import checks
 import model
+import stats
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -119,6 +120,8 @@ CREATE INDEX IF NOT EXISTS anomalies_ts ON anomalies(ts);
 CREATE INDEX IF NOT EXISTS anomalies_key ON anomalies(key);
 CREATE TABLE IF NOT EXISTS rawdata (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, data BLOB NOT NULL);
 """)
+_db.commit()
+_db.executescript(stats.SCHEMA)
 _db.commit()
 # exact=1: genauer Moment („geht gerade zu/auf“), exact=0: Beobachtung („ist schon zu/auf“, alle Besucher-Meldungen)
 # traintype: beim Mitmessen „personen“ oder „gueter“ (bei „auf“: Art des letzten Zugs). Güterzüge stehen in
@@ -286,6 +289,15 @@ def index(request: Request):
     except Exception:
         pass  # Zählen darf die Seite nie stören
     return FileResponse(ROOT / "index.html", headers=NOCACHE)
+
+
+@app.get("/statistik")
+def statistik_page(request: Request):
+    try:
+        record_visit(request)
+    except Exception:
+        pass
+    return FileResponse(ROOT / "statistik.html", headers=NOCACHE)
 
 
 @app.get("/impressum")
@@ -580,6 +592,7 @@ def _slim(out):
 def run_checks(out, body, rt):
     now = out["generated"]
     db("INSERT OR REPLACE INTO history(ts, data) VALUES(?, ?)", (now // 1000, _pack(_slim(out))))
+    stats.log_passes(db, out["passes"], now)   # Fahrtenbuch für /statistik
     found = checks.check(out, _prev_state[0], now)
     _prev_state[0] = out
     raw_id = None
@@ -599,6 +612,7 @@ def run_checks(out, body, rt):
         db("DELETE FROM history WHERE ts < ?", (time.time() - HISTORY_DAYS * 86400,))
         db("DELETE FROM anomalies WHERE ts < ?", (time.time() - ANOMALY_DAYS * 86400,))
         db("DELETE FROM rawdata WHERE ts < ?", (time.time() - ANOMALY_DAYS * 86400,))
+        stats.purge(db)
 
 
 async def watch_loop():
@@ -614,6 +628,42 @@ async def watch_loop():
 @app.on_event("startup")
 async def start_watch():
     asyncio.create_task(watch_loop())
+    try:   # Fahrtenbuch einmalig aus den gespeicherten Minuten-Ständen füllen
+        n = await asyncio.to_thread(stats.backfill_from_history, db, _unpack)
+        if n:
+            print(f"Fahrtenbuch aus {n} gespeicherten Ständen nachgetragen")
+    except Exception as e:
+        print("Fahrtenbuch nachtragen fehlgeschlagen:", repr(e))
+
+
+# ---------------------------------------------------------------- Statistik (öffentlich, nur Zugdaten)
+_stats_cache = [0.0, None]
+
+
+def forecast_accuracy(days=7):
+    """Wie oft lag die Vorhersage richtig? Nach Jans Messungen (genauer Moment ±60 s, Beobachtung stimmte)."""
+    cfg = get_config()
+    rows = db("SELECT * FROM reports WHERE ts > ? AND ignored=0 AND source='admin' ORDER BY ts", (time.time() - days * 86400,))
+    real = actual_passes(rows)
+    hit = n = 0
+    for r in rows:
+        if r["state"] not in ("zu", "auf"):
+            continue
+        e = evaluate(r, cfg, real)
+        if e["outlier"] or e["dev"] is None:
+            continue
+        n += 1
+        hit += (abs(e["dev"]) <= 60) if e["exact"] else bool(e["match"])
+    return {"pct": round(100 * hit / n), "n": n} if n >= 5 else None
+
+
+@app.get("/api/stats")
+async def stats_api():
+    if _stats_cache[1] is None or _stats_cache[0] < time.time():
+        out = await asyncio.to_thread(stats.compute, db, effective_config()["crossings"])
+        out["accuracy"] = await asyncio.to_thread(forecast_accuracy)
+        _stats_cache[0], _stats_cache[1] = time.time() + 60, json.dumps(out, separators=(",", ":")).encode()
+    return Response(_stats_cache[1], media_type="application/json", headers=NOCACHE)
 
 
 def _t(s):

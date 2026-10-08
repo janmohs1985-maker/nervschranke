@@ -280,6 +280,9 @@ h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-top:4px;line-heig
 .mt .lbl{position:absolute;left:50%;top:2px;transform:translateX(-50%);font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;
   white-space:nowrap;background:#F2F3F7;color:#0C0D12;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 
+.statlink{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px;text-decoration:none;color:var(--text)}
+.statlink span span{font-size:13px;color:var(--muted)}
+.statlink .arr{font-size:22px;color:var(--orange)}
 footer{color:var(--dim);font-size:12px;line-height:1.55;padding:2px 4px 0}
 footer a{color:var(--dim)}
 footer .legal{margin-top:8px}
@@ -319,6 +322,7 @@ footer .legal a{color:var(--muted)}
     <div class="maptag" id="maptag">Live-Karte</div>
   </section>
 
+  <a class="card statlink" href="/statistik"><span><b>Wie nervig war's heute?</b><br><span>Minuten zu, nervigste Uhrzeit, Züge und Rekorde</span></span><span class="arr">→</span></a>
   <footer>
     Geschätzt aus Fahrplan und Verspätungen – die echten Schranken können früher schließen oder länger zu bleiben.
     Güterzüge fehlen in den Daten. In der Zugliste steht, woher die Zeit kommt: „DB live“ = Echtzeit der Deutschen Bahn,
@@ -326,7 +330,7 @@ footer .legal a{color:var(--muted)}
     (<a href="https://transitous.org/sources/" target="_blank" rel="noopener">Datenquellen</a>),
     Echtzeit Nersingen/Ulm: Deutsche Bahn AG (<a href="https://developers.deutschebahn.com/" target="_blank" rel="noopener">DB API Marketplace</a>),
     Karte: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkende.
-    <div class="legal"><a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a></div>
+    <div class="legal"><a href="/statistik">Statistik</a> · <a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a></div>
   </footer>
 </main>
 
