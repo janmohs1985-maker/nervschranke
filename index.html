@@ -9,6 +9,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Nervschranke">
+<!-- Safari auf dem iPhone zeigt oben von selbst „Nervschranke – Öffnen/Laden“ -->
+<meta name="apple-itunes-app" content="app-id=6819725073">
 <meta property="og:title" content="Nervschranke – wo komm ich durch?">
 <meta property="og:description" content="Live-Schätzung für die drei Bahnübergänge in Nersingen.">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
@@ -280,6 +282,15 @@ h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-top:4px;line-heig
 .mt .lbl{position:absolute;left:50%;top:2px;transform:translateX(-50%);font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;
   white-space:nowrap;background:#F2F3F7;color:#0C0D12;box-shadow:0 1px 4px rgba(0,0,0,.35)}
 
+/* Hinweis auf die iPhone-App (wegklickbar; auf Android ausgeblendet – die App gibt es nur fürs iPhone) */
+.appad{display:flex;align-items:center;gap:10px;padding:10px 8px 10px 12px;border-color:rgba(255,138,61,.3);
+  background:linear-gradient(120deg,#231A14,#16171E 70%)}
+.appad img{width:44px;height:44px;border-radius:10px;flex:none;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+.appad .tx{flex:1;min-width:0}
+.appad .tx b{display:block;font-size:14.5px;white-space:nowrap}
+.appad .tx span{display:block;font-size:12.5px;color:var(--muted);line-height:1.35;margin-top:2px}
+.appad .get{flex:none;padding:8px 14px;border-radius:999px;background:var(--orange);color:#1A0E05;font-weight:700;font-size:14px;text-decoration:none}
+.appad .x{flex:none;width:26px;height:26px;margin-left:-4px;border-radius:50%;color:var(--dim);font-size:16px;line-height:1}
 .statlink{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px;text-decoration:none;color:var(--text)}
 .statlink span span{font-size:13px;color:var(--muted)}
 .statlink .arr{font-size:22px;color:var(--orange)}
@@ -304,6 +315,12 @@ footer .legal a{color:var(--muted)}
 
   <div class="tiles" id="tiles"></div>
   <div class="tip" id="tip"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--green)"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><div><div class="k" id="tipK">SCHLEICHWEG-TIPP</div><div class="t" id="tipT">Zugdaten werden geholt …</div></div></div>
+  <div class="card appad" id="appAd" hidden>
+    <img src="/static/apple-touch-icon.png" alt="" width="44" height="44">
+    <div class="tx"><b>Jetzt als iPhone-App</b><span>Mit Widgets und Countdown auf dem Sperrbildschirm</span></div>
+    <a class="get" href="https://apps.apple.com/de/app/nervschranke-nersingen/id6819725073" target="_blank" rel="noopener">Laden</a>
+    <button class="x" id="appAdX" type="button" aria-label="Hinweis ausblenden">×</button>
+  </div>
 
   <section class="band" id="band" aria-label="Gleisband mit Zügen und Schranken"></section>
 
@@ -854,6 +871,14 @@ $("mmAuf").addEventListener("click", () => measure("auf"));
 $("mmCancel").addEventListener("click", () => { MM = null; $("mm").hidden = true; });
 $("mmOk").addEventListener("click", () => { $("mm").hidden = true; });
 
+// Hinweis auf die iPhone-App: nicht auf Android (gibt es dort nicht) und nicht mehr, wenn weggeklickt
+(() => {
+  const ua = navigator.userAgent;
+  let off = false; try { off = localStorage.getItem("nsAppAd") === "aus"; } catch (e) {}
+  if (/Android/i.test(ua) || off) return;
+  $("appAd").hidden = false;
+  $("appAdX").addEventListener("click", () => { $("appAd").hidden = true; try { localStorage.setItem("nsAppAd", "aus"); } catch (e) {} });
+})();
 $("fab").addEventListener("click", () => { hideHint(true); openSheet("ask"); });
 // Hinweis auf den Melde-Knopf: bei den ersten 3 Besuchen, bis jemand den Knopf oder ✕ antippt; jeweils nach 12 s weg
 function hideHint(forever) {
