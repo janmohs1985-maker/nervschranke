@@ -886,8 +886,17 @@ $("mmAuf").addEventListener("click", () => measure("auf"));
 $("mmCancel").addEventListener("click", () => { MM = null; $("mm").hidden = true; });
 $("mmOk").addEventListener("click", () => { $("mm").hidden = true; });
 
+// In der iPhone-App geöffnet (?app=1, gilt dann für die ganze Sitzung): kein App-Hinweis, kein Melde-Knopf –
+// die App meldet selbst
+const IN_APP = (() => {
+  let v = new URLSearchParams(location.search).has("app");
+  try { if (v) sessionStorage.setItem("nsInApp", "1"); else v = sessionStorage.getItem("nsInApp") === "1"; } catch (e) {}
+  return v;
+})();
+if (IN_APP) { $("fab").hidden = true; document.body.classList.add("inapp"); }
 // Hinweis auf die iPhone-App: nicht auf Android (gibt es dort nicht) und nicht mehr, wenn weggeklickt
 (() => {
+  if (IN_APP) return;
   const ua = navigator.userAgent;
   let off = false; try { off = localStorage.getItem("nsAppAd") === "aus"; } catch (e) {}
   if (/Android/i.test(ua) || off) return;
@@ -935,6 +944,7 @@ function hideHint(forever) {
   h.classList.add("out"); setTimeout(() => { h.hidden = true; }, 260);
 }
 (() => {
+  if (IN_APP) return;
   let n = 0;
   try { n = +localStorage.getItem("nsHint") || 0; localStorage.setItem("nsHint", String(n + 1)); } catch (e) { return; }
   if (n >= 3) return;

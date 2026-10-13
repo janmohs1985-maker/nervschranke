@@ -291,6 +291,12 @@ def index(request: Request):
     return FileResponse(ROOT / "index.html", headers=NOCACHE)
 
 
+@app.get("/mehr")
+def mehr_page():
+    """„Mehr“ in der iPhone-App (lädt /mehr?app=1): neue Web-Funktionen ohne App-Update."""
+    return FileResponse(ROOT / "mehr.html", headers=NOCACHE)
+
+
 @app.get("/statistik")
 def statistik_page(request: Request):
     try:
