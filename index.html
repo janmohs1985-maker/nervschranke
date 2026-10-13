@@ -291,6 +291,21 @@ h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin-top:4px;line-heig
 .appad .tx span{display:block;font-size:12.5px;color:var(--muted);line-height:1.35;margin-top:2px}
 .appad .get{flex:none;padding:8px 14px;border-radius:999px;background:var(--orange);color:#1A0E05;font-weight:700;font-size:14px;text-decoration:none}
 .appad .x{flex:none;width:26px;height:26px;margin-left:-4px;border-radius:50%;color:var(--dim);font-size:16px;line-height:1}
+/* App-Hinweis groß in der Mitte, der dann klein in die Karte unter dem Tipp fliegt (erste 2 Besuche) */
+.apppop-bg{position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:24px;animation:fadein .3s ease-out}
+.apppop{width:min(340px,100%);border-radius:28px;padding:26px 22px 18px;text-align:center;border:1px solid rgba(255,138,61,.35);
+  background:linear-gradient(160deg,#2A1D14,#16171E 65%);box-shadow:0 24px 60px rgba(0,0,0,.6);animation:popin .5s cubic-bezier(.3,1.4,.5,1)}
+.apppop img{width:96px;height:96px;border-radius:22px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.apppop .k{font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--orange);margin-top:16px}
+.apppop b{display:block;font-size:22px;margin-top:4px;line-height:1.2}
+.apppop p{font-size:14px;color:var(--muted);margin-top:8px;line-height:1.45}
+.apppop .get{display:block;margin-top:18px;padding:14px;border-radius:16px;background:var(--orange);color:#1A0E05;font-weight:700;font-size:16px;text-decoration:none}
+.apppop .later{display:block;width:100%;margin-top:6px;padding:10px;color:var(--muted);font-size:14px}
+.appad.landed{animation:landed 1.2s ease-out}
+@keyframes popin{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+@keyframes landed{0%{box-shadow:0 0 0 0 rgba(255,138,61,.7)}100%{box-shadow:0 0 0 16px rgba(255,138,61,0)}}
+@media (prefers-reduced-motion:reduce){.apppop,.apppop-bg,.appad.landed{animation:none}}
 .statlink{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px;text-decoration:none;color:var(--text)}
 .statlink span span{font-size:13px;color:var(--muted)}
 .statlink .arr{font-size:22px;color:var(--orange)}
@@ -878,6 +893,38 @@ $("mmOk").addEventListener("click", () => { $("mm").hidden = true; });
   if (/Android/i.test(ua) || off) return;
   $("appAd").hidden = false;
   $("appAdX").addEventListener("click", () => { $("appAd").hidden = true; try { localStorage.setItem("nsAppAd", "aus"); } catch (e) {} });
+  // bei den ersten 2 Besuchen: erst groß in der Mitte, dann fliegt es klein in die Karte
+  let n = 0;
+  try { n = +localStorage.getItem("nsAppPop") || 0; localStorage.setItem("nsAppPop", String(n + 1)); } catch (e) { return; }
+  if (n >= 2) return;
+  window.appPopShown = true;   // dann kommt die Blase am Melde-Knopf erst danach
+  setTimeout(() => {
+    const bg = document.createElement("div"); bg.className = "apppop-bg";
+    bg.innerHTML = `<div class="apppop" role="dialog" aria-label="Nervschranke als iPhone-App">
+      <img src="/static/apple-touch-icon.png" alt="" width="96" height="96">
+      <div class="k">NEU IM APP STORE</div><b>Die Nervschranke als iPhone-App</b>
+      <p>Countdown auf dem Sperrbildschirm, Widgets für den Homescreen und Melden mit einem Tipp.</p>
+      <a class="get" href="https://apps.apple.com/de/app/nervschranke-nersingen/id6819725073" target="_blank" rel="noopener">Im App Store laden</a>
+      <button class="later" type="button">Später</button></div>`;
+    document.body.appendChild(bg);
+    const card = bg.querySelector(".apppop");
+    let done = false;
+    const fly = () => {
+      if (done) return; done = true;
+      const t = $("appAd"), a = card.getBoundingClientRect(), b = t.getBoundingClientRect();
+      const still = matchMedia("(prefers-reduced-motion: reduce)").matches || b.bottom < 0 || b.top > innerHeight;
+      const end = () => { bg.remove(); t.classList.remove("landed"); void t.offsetWidth; t.classList.add("landed"); };
+      if (still || !card.animate) return end();
+      const dx = (b.left + b.width / 2) - (a.left + a.width / 2), dy = (b.top + b.height / 2) - (a.top + a.height / 2);
+      card.animate([{transform: "none", opacity: 1}, {transform: `translate(${dx}px,${dy}px) scale(${b.width / a.width},${b.height / a.height})`, opacity: .2}],
+        {duration: 650, easing: "cubic-bezier(.4,0,.2,1)", fill: "forwards"});
+      bg.animate([{opacity: 1}, {opacity: 0}], {duration: 650, fill: "forwards"}).onfinish = end;
+    };
+    bg.querySelector(".later").addEventListener("click", fly);
+    bg.addEventListener("click", e => { if (e.target === bg) fly(); });
+    bg.querySelector(".get").addEventListener("click", () => setTimeout(fly, 300));
+    setTimeout(fly, 5000);
+  }, 1200);
 })();
 $("fab").addEventListener("click", () => { hideHint(true); openSheet("ask"); });
 // Hinweis auf den Melde-Knopf: bei den ersten 3 Besuchen, bis jemand den Knopf oder ✕ antippt; jeweils nach 12 s weg
@@ -891,7 +938,7 @@ function hideHint(forever) {
   let n = 0;
   try { n = +localStorage.getItem("nsHint") || 0; localStorage.setItem("nsHint", String(n + 1)); } catch (e) { return; }
   if (n >= 3) return;
-  setTimeout(() => { $("fabHint").hidden = false; setTimeout(() => hideHint(false), 12000); }, 1500);
+  setTimeout(() => { $("fabHint").hidden = false; setTimeout(() => hideHint(false), 12000); }, window.appPopShown ? 8000 : 1500);
 })();
 $("fabHintX").addEventListener("click", () => hideHint(true));
 $("sheetBg").addEventListener("click", closeSheet);
