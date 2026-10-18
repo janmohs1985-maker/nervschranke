@@ -264,6 +264,21 @@ def compute(raw, rt, model, timing=None):
                 seen_seg.add(key)
                 S.append(seg)
 
+    # Ein Zug, der durchfährt, muss über alle drei Übergänge. Fehlt er an einem, folgt sein Fahrweg nicht den
+    # Gleisen (z. B. „62N“ Augsburg–Ulm–Göppingen, 18.10.2026: mal nur Elchinger, mal nur Wald/Fichten) – dann
+    # keine Sperrung und nicht im Gleisband, sonst rechnen wir falsche Sperrungen.
+    trips_at = {}
+    for cid, lst in P.items():
+        for p in lst:
+            trips_at.setdefault(p["id"], {})[cid] = p
+    bad = {t for t, at in trips_at.items() if len(at) < len(P) and all(p["case"] == "durch" for p in at.values())}
+    for cid in P:
+        for p in P[cid]:
+            if p["id"] in bad:
+                dropped.append({"crossing": cid, "label": p["label"], "pass": p["pass"], "why": "fährt nicht über alle drei Übergänge"})
+        P[cid] = [p for p in P[cid] if p["id"] not in bad]
+    S = [x for x in S if x["trip"] not in bad]
+
     # derselbe Zug (gleiche Nummer, gleiche Richtung) doppelt mit weit auseinanderliegenden Zeiten – nur der mit
     # der besten Zeitangabe zählt (beobachtet 7.10.2026: ICE 9576 einmal nach Fahrplan 07:56 und einmal mit
     # DB-Echtzeit +9 um 08:05; der „Geisterzug“ hielt die Waldstraße zu)

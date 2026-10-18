@@ -364,6 +364,7 @@ def admin_logout():
 # ---------------------------------------------------------------- Zugdaten (30 s zwischengespeichert)
 
 _trips_cache = {}
+_last_good = {"near": None, "wide": None}   # (Zeit, Liste) der letzten gültigen Antworten
 _trips_lock = asyncio.Lock()
 # Transitous möchte Name, Version und Kontakt im User-Agent
 _http = httpx.AsyncClient(timeout=25, headers={"User-Agent": "Nervschranke/1.1 (+https://nervschranke.de; jan@mohs.es)"})
@@ -399,16 +400,29 @@ async def trips_body(start, end):
         try:
             near, wide = await asyncio.gather(
                 _http.get(TRANSITOUS, params={**NEAR, "startTime": start, "endTime": end}),
-                _http.get(TRANSITOUS, params={**WIDE, "startTime": start, "endTime": end}))
-            near.raise_for_status()
-            segs = [s for s in near.json() if s.get("mode") not in ("BUS", "COACH", "AIRPLANE", "TRAM", "FERRY")]
-            if wide.status_code == 200:
-                seen = {(s["trips"][0].get("tripId"), s.get("departure")) for s in segs if s.get("trips")}
-                for s in wide.json():
-                    key = (s["trips"][0].get("tripId"), s.get("departure")) if s.get("trips") else None
-                    if s.get("mode") in LONG_MODES and key not in seen:
-                        segs.append(s)
-                        seen.add(key)
+                _http.get(TRANSITOUS, params={**WIDE, "startTime": start, "endTime": end}), return_exceptions=True)
+            # Aussetzer einer Abfrage: die letzten gültigen Daten (höchstens 10 Min. alt) weiterverwenden – sonst
+            # verschwanden z. B. alle ICEs auf einen Schlag (beobachtet 18.10.2026 16:26: ICE 514, 919, 567 …)
+            if isinstance(near, Exception) or near.status_code != 200:
+                if not _last_good["near"] or _last_good["near"][0] < time.time() - 600:
+                    raise RuntimeError("Transitous (Nahbereich) nicht erreichbar")
+                near_list = _last_good["near"][1]
+            else:
+                near_list = near.json()
+                _last_good["near"] = (time.time(), near_list)
+            long_ok = not isinstance(wide, Exception) and wide.status_code == 200
+            wide_list = wide.json() if long_ok else []
+            if any(s.get("mode") in LONG_MODES for s in wide_list):
+                _last_good["wide"] = (time.time(), wide_list)
+            elif _last_good["wide"] and _last_good["wide"][0] > time.time() - 600:
+                wide_list = _last_good["wide"][1]
+            segs = [s for s in near_list if s.get("mode") not in ("BUS", "COACH", "AIRPLANE", "TRAM", "FERRY")]
+            seen = {(s["trips"][0].get("tripId"), s.get("departure")) for s in segs if s.get("trips")}
+            for s in wide_list:
+                key = (s["trips"][0].get("tripId"), s.get("departure")) if s.get("trips") else None
+                if s.get("mode") in LONG_MODES and key not in seen:
+                    segs.append(s)
+                    seen.add(key)
             body = json.dumps(segs).encode()
         except Exception:
             if hit:  # lieber alte Daten als keine

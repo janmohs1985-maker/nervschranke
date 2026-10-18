@@ -93,7 +93,7 @@ def check(state, prev, now):
     # 3. aussortierte „Geisterzüge“ (gleiche Nummer, Zeiten weit auseinander) – zur Kontrolle, dass kein echter
     #    Zug fehlt. Gleicher Zug aus zwei Quellen kurz hintereinander (DRF / WB 963) ist normal und zählt nicht.
     for d in state.get("dropped", []):
-        if d["why"].startswith("doppelt") and now - LOOK_BACK <= d["pass"] <= now + LOOK_AHEAD:
+        if (d["why"].startswith("doppelt") or "nicht über alle" in d["why"]) and now - LOOK_BACK <= d["pass"] <= now + LOOK_AHEAD:
             add("aussortiert", d["crossing"], d["label"], d["why"], d["pass"])
 
     # 4. Vergleich mit der Rechnung von vorhin: verschwundene Züge und große Sprünge
