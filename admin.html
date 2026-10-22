@@ -133,8 +133,8 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
     <div class="links"><a href="/">zur Seite</a><a href="/admin/logout">abmelden</a></div>
   </header>
 
-  <div class="seg" id="tabs" style="grid-template-columns:repeat(3,minmax(0,1fr))">
-    <button data-tab="messen" class="on">Messen</button><button data-tab="auswertung">Auswertung</button><button data-tab="besucher">Besucher</button>
+  <div class="seg" id="tabs" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+    <button data-tab="messen" class="on">Messen</button><button data-tab="auswertung">Auswertung</button><button data-tab="besucher">Besucher</button><button data-tab="labor">Labor</button>
   </div>
   <div class="seg" id="xsel" style="grid-template-columns:repeat(3,minmax(0,1fr))"></div>
 
@@ -160,6 +160,33 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
     <button class="undo" id="undo" type="button">↶ Rückgängig</button>
     <div class="h">Heute gemessen</div>
     <div class="card" id="today"><div class="row muted">noch nichts</div></div>
+  </section>
+
+  <!-- Labor: Testmodell, die Seite nutzt es nicht -->
+  <section id="labor" hidden style="flex-direction:column;gap:14px">
+    <div class="card" style="padding:12px 16px;border-color:rgba(255,176,32,.35)"><b style="color:var(--amber)">Nur zum Testen</b>
+      <div class="mini" style="padding:4px 0 0">Ein kleines Lernmodell aus deinen Messungen. Die Seite und die App nutzen es <b>nicht</b> – hier siehst du nur, ob es besser wäre als die heutige Regel.</div></div>
+    <div class="kpis" id="labKpis"></div>
+    <div class="card">
+      <div class="ct"><b>Was das Modell gelernt hat</b><span class="muted" style="font-size:12px">Sekunden mehr (+) oder weniger (−)</span></div>
+      <div id="labBeta"></div>
+      <div class="mini">„Zu vor dem Zug“ und „auf nach dem Zug“ getrennt. Grundwert = Elchinger, Durchfahrt Regionalzug, Richtung Augsburg, mittags, Werktag, pünktlich. Die anderen Zeilen sagen, was sich ändert.</div>
+    </div>
+    <div class="card">
+      <div class="ct"><b>Nächste Züge: Seite vs. Modell</b><span class="muted" style="font-size:12px">nur Anzeige</span></div>
+      <div class="tbl"><table><thead><tr><th>ZUG</th><th>SCHRANKE</th><th>DRÜBER</th><th>ZU (SEITE · MODELL)</th><th>AUF (SEITE · MODELL)</th></tr></thead><tbody id="labUp"></tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="ct"><b>Güterzüge nach Uhrzeit</b><span class="muted" style="font-size:12px" id="labFrN"></span></div>
+      <div class="vbars hours" id="labFrWd" style="height:110px"></div>
+      <div class="vaxis"><span>0</span><span>6</span><span>12</span><span>18</span><span>23 Uhr</span></div>
+      <div class="mini">Werktage, gemeldete Güterzüge pro Tag je Stunde (geglättet). Wochenende darunter, sobald genug Meldungen da sind.</div>
+      <div class="vbars hours" id="labFrWe" style="height:70px"></div>
+    </div>
+    <div class="card">
+      <div class="ct"><b>Probe: jede Messung ohne sich selbst vorhergesagt</b></div>
+      <div class="tbl"><table><thead><tr><th>WANN</th><th>SCHRANKE · FALL</th><th>GEMESSEN</th><th>REGEL</th><th>MODELL</th></tr></thead><tbody id="labRows"></tbody></table></div>
+    </div>
   </section>
 
   <!-- Besucher -->
@@ -297,8 +324,43 @@ function renderSel() {
   $("messen").style.display = tab === "messen" ? "flex" : "none";
   $("auswertung").hidden = tab !== "auswertung"; $("auswertung").style.display = tab === "auswertung" ? "flex" : "none";
   $("besucher").hidden = tab !== "besucher"; $("besucher").style.display = tab === "besucher" ? "flex" : "none";
-  $("xsel").style.display = tab === "besucher" ? "none" : "grid";
-  $("title").textContent = tab === "messen" ? "Messen an der Schranke" : tab === "auswertung" ? "Auswertung & Modell" : "Besucher & Nachfrage";
+  $("labor").hidden = tab !== "labor"; $("labor").style.display = tab === "labor" ? "flex" : "none";
+  $("xsel").style.display = tab === "besucher" || tab === "labor" ? "none" : "grid";
+  $("title").textContent = tab === "messen" ? "Messen an der Schranke" : tab === "auswertung" ? "Auswertung & Modell"
+    : tab === "labor" ? "Labor: Testmodell" : "Besucher & Nachfrage";
+}
+
+// ---------- Labor (Testmodell, nur Anzeige) ----------
+const PNAME = {durch_before: "Durchfahrt, zu vor", durch_before_long: "Fernzug, zu vor", durch_after: "Durchfahrt, auf nach",
+  ab_before: "Abfahrt, zu vor", ab_after: "Abfahrt, auf nach", an_before: "Ankunft, zu vor", an_after: "Ankunft, auf nach"};
+async function loadLabor() {
+  const r = await fetch("/api/admin/labor", {cache: "no-store"});
+  if (r.status === 401) { location.reload(); return; }
+  const L = await r.json(), B = L.model.before, A = L.model.after;
+  const kpi = (t, M) => M.mae_model == null
+    ? `<div class="card kpi"><div class="muted" style="font-size:12px">${t}</div><div class="v">–</div><div class="n">${M.n} Messungen, ab 6 rechnet es</div></div>`
+    : `<div class="card kpi"><div class="muted" style="font-size:12px">${t}</div><div class="v" style="color:${M.mae_model < M.mae_rule ? "var(--green)" : "var(--amber)"}">${M.mae_model} s</div>
+       <div class="n">Ø daneben · heutige Regel ${M.mae_rule} s · ${M.n} Messungen</div></div>`;
+  $("labKpis").innerHTML = kpi("Zu vor dem Zug", B) + kpi("Auf nach dem Zug", A) +
+    `<div class="card kpi"><div class="muted" style="font-size:12px">Güterzüge gemeldet</div><div class="v">${L.freight.n}</div><div class="n">seit es die Auswahl gibt</div></div>`;
+  const betaRows = (t, M) => M.beta ? `<div class="row" style="font-weight:700">${t}</div>` + M.beta.map((b, i) =>
+    `<div class="row"><span style="flex:1;font-size:13px">${esc(M.names[i])}</span><span class="mono" style="font-weight:700;color:${i === 0 ? "var(--text)" : b > 0 ? "var(--redtxt)" : "var(--green)"}">${i === 0 ? "" : b > 0 ? "+" : ""}${Math.round(b)} s</span></div>`).join("") : "";
+  $("labBeta").innerHTML = betaRows("Zu vor dem Zug", B) + betaRows("Auf nach dem Zug", A) || `<div class="row muted">noch zu wenig Messungen</div>`;
+  const t = ms => ms ? new Date(ms).toLocaleTimeString("de-DE", {timeZone: "Europe/Berlin"}) : "–";
+  const diff = (a, b) => a && b ? ` <span class="muted">(${Math.round((b - a) / 1000) >= 0 ? "+" : ""}${Math.round((b - a) / 1000)} s)</span>` : "";
+  $("labUp").innerHTML = L.upcoming.length ? L.upcoming.map(u => `<tr><td><b>${esc(u.label)}</b> <span class="muted">${u.westbound ? "→ Ulm" : "→ Augsb."} · ${u.case}</span></td>
+    <td>${CROSSINGS.find(c => c.id === u.crossing).short}</td><td class="mono">${t(u.pass)}</td>
+    <td class="mono">${t(u.seiteZu)} · ${t(u.modellZu)}${diff(u.seiteZu, u.modellZu)}</td><td class="mono">${t(u.seiteAuf)} · ${t(u.modellAuf)}${diff(u.seiteAuf, u.modellAuf)}</td></tr>`).join("")
+    : `<tr><td colspan="5" class="muted">in der nächsten Stunde kein Zug</td></tr>`;
+  const F = L.freight, bars = a => { const m = Math.max(0.01, ...a); return a.map((v, h) => `<div class="b" title="${h}–${h + 1} Uhr: ${v} pro Tag"><i style="height:${v / m * 100}%;background:rgba(255,176,32,.75)"></i></div>`).join(""); };
+  $("labFrN").textContent = `${F.n} Güterzüge · ${F.tage_werktag} Werktage · ${F.tage_wochenende} Wochenendtage`;
+  $("labFrWd").innerHTML = bars(F.werktag); $("labFrWe").innerHTML = bars(F.wochenende);
+  const rows = [...(B.rows || []), ...(A.rows || [])].sort((a, b) => b.ts - a.ts).slice(0, 30);
+  $("labRows").innerHTML = rows.length ? rows.map(x => { const em = Math.abs(x.modell - x.gemessen), er = Math.abs(x.regel - x.gemessen);
+    return `<tr><td class="mono">${dayHms(x.ts)}</td><td>${CROSSINGS.find(c => c.id === x.crossing).short} · ${PNAME[x.param] || x.param}${x.besucher ? ' <span class="muted">(Besucher)</span>' : ""}</td>
+      <td class="mono"><b>${x.gemessen} s</b></td><td class="mono" style="color:${er <= em ? "var(--green)" : "var(--muted)"}">${x.regel} s</td>
+      <td class="mono" style="color:${em < er ? "var(--green)" : "var(--muted)"}">${x.modell} s</td></tr>`; }).join("")
+    : `<tr><td colspan="5" class="muted">noch zu wenig Messungen</td></tr>`;
 }
 
 // ---------- Besucher ----------
@@ -330,7 +392,7 @@ async function loadVisits() {
 setInterval(() => { if (tab === "besucher" && !document.hidden) loadVisits(); }, 30000);
 
 $("xsel").addEventListener("click", e => { const b = e.target.closest("[data-x]"); if (!b) return; xid = b.dataset.x; try { localStorage.setItem("nsAdminX", xid); } catch (e2) {} renderSel(); renderMessen(); renderAnalysis(); });
-$("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (!b) return; tab = b.dataset.tab; renderSel(); if (tab === "auswertung") loadAnalysis(); if (tab === "besucher") loadVisits(); });
+$("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (!b) return; tab = b.dataset.tab; renderSel(); if (tab === "auswertung") loadAnalysis(); if (tab === "besucher") loadVisits(); if (tab === "labor") loadLabor(); });
 
 // ---------- Messen ----------
 function mState() { try { return JSON.parse(localStorage.getItem("nsMess_" + xid) || "{}"); } catch (e) { return {}; } }

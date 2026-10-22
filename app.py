@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 import zlib
 
 import checks
+import ml
 import model
 import stats
 from datetime import datetime, timedelta, timezone
@@ -1274,6 +1275,45 @@ def admin_analysis(request: Request, days: float = 60):
                        "exact": sum(1 for d in devs if d["exact"]), "observed": sum(1 for d in devs if not d["exact"])},
         }
     return {"crossings": res, "config": cfg, "timing": {"learned": learned_timing(cfg), "effective": effective_config()["timing"]}}
+
+
+@app.get("/api/admin/labor")
+async def admin_labor(request: Request):
+    """Labor: Testmodell (ml.py) – nur Anzeige im Admin-Bereich, die Seite nutzt es nicht."""
+    need_admin(request)
+    cfg = get_config()                      # manuelle Werte = Startwert der heutigen Regel
+    rows = db("SELECT * FROM reports WHERE ignored=0 AND exact=1 AND ts > ? ORDER BY ts", (time.time() - 365 * 86400,))
+    real = actual_passes(rows)
+    samples = []
+    for r in rows:
+        e = evaluate(r, cfg, real)
+        par = e.get("param")
+        if not e["exact"] or e["outlier"] or par not in PARAM_KEYS or e["measured"] is None or par in ("an_after_dep", "stay_closed"):
+            continue
+        vis = r["source"] == "visitor"
+        if vis and (e["dev"] is None or abs(e["dev"]) > 180):
+            continue
+        try:
+            snap = json.loads(r["snapshot"]) if r["snapshot"] else {}
+        except ValueError:
+            snap = {}
+        samples.append({"kind": "before" if "_before" in par else "after", "crossing": r["crossing"], "param": par,
+                        "case": snap.get("case") or "durch", "long": bool(snap.get("long")), "westbound": bool(snap.get("westbound")),
+                        "ts": r["ts"], "delay": snap.get("delay"), "y": e["measured"],
+                        "w": float(cfg["learn"].get("visitorWeight", 0.3)) if vis else 1.0,
+                        "manual": cfg["crossings"][r["crossing"]][par]})
+    model_out = await asyncio.to_thread(ml.closure_model, samples)
+    # Güterzüge seit es die Auswahl gibt (erste Meldung mit Zugart)
+    first = db("SELECT MIN(ts) AS t FROM reports WHERE traintype IS NOT NULL", one=True)
+    ev = [r["ts"] for r in db("SELECT ts FROM reports WHERE ignored=0 AND state='zug' AND traintype='gueter' ORDER BY ts")]
+    fr = ml.freight(ev, (first["t"] if first and first["t"] else time.time()), time.time())
+    # nächste Züge: Seite vs. Modell
+    try:
+        st, _, _ = await compute_state()
+        up = ml.upcoming(st["passes"], cfg["crossings"], {k: v.get("beta") for k, v in model_out.items()}, int(time.time() * 1000))
+    except Exception:
+        up = []
+    return JSONResponse({"model": model_out, "freight": fr, "upcoming": up, "samples": len(samples)}, headers=NOCACHE)
 
 
 @app.get("/api/admin/visits")
