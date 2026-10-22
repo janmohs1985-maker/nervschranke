@@ -119,6 +119,17 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
 .vbars .b em{position:absolute;left:25%;right:25%;bottom:0;border-radius:2px 2px 0 0;background:var(--blue)}
 .vbars .b:hover i{background:var(--orange)}
 .vbars.hours .b i{background:rgba(61,220,132,.7)}
+.vbars .b u{position:absolute;left:-1px;right:-1px;height:2px;border-radius:1px;background:var(--text);z-index:1}
+.vbars.days .b i{background:rgba(255,138,61,.3)}
+.vbars.days .b:hover i{background:rgba(255,138,61,.5)}
+.vbars.days .b em{left:12%;right:12%}
+.rng{display:flex;gap:4px}
+.rng button{padding:4px 9px;border-radius:8px;font-size:12px;font-weight:600;color:var(--muted);background:#22242D}
+.rng button.on{background:var(--text);color:var(--bg)}
+.heat{display:grid;grid-template-columns:22px repeat(24,minmax(0,1fr));gap:2px;padding:6px 16px 10px;font-size:10px;color:var(--dim);font-family:var(--mono)}
+.heat i{aspect-ratio:1/1;border-radius:3px;background:#1C1E26}
+.heat span{align-self:center}
+.heat .hx{text-align:center}
 .vaxis{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);padding:6px 16px 14px;font-family:var(--mono)}
 .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:6px;animation:breatheG 2s infinite}
 </style>
@@ -193,17 +204,24 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
   <section id="besucher" hidden style="flex-direction:column;gap:14px">
     <div class="kpis" id="vKpis"></div>
     <div class="card">
-      <div class="ct"><b>Aufrufe pro Tag</b>
-        <div style="display:flex;gap:12px;font-size:12px" class="muted"><span><span class="dot" style="display:inline-block;background:var(--orange)"></span> Aufrufe</span><span><span class="dot" style="display:inline-block;background:var(--blue)"></span> Besucher</span></div></div>
-      <div class="vbars" id="vDays"></div>
+      <div class="ct"><b>Besucher pro Tag</b>
+        <div class="rng" id="vRange"><button data-d="7">7 T</button><button data-d="30" class="on">30 T</button><button data-d="90">90 T</button></div></div>
+      <div class="vbars days" id="vDays"></div>
       <div class="vaxis" id="vDaysAxis"></div>
+      <div class="mini" style="display:flex;gap:12px;margin-top:-8px"><span><span class="dot" style="display:inline-block;background:var(--blue)"></span> Besucher</span><span><span class="dot" style="display:inline-block;background:var(--orange)"></span> Aufrufe</span></div>
     </div>
     <div class="cols">
-      <div class="main">
+      <div class="main" style="display:flex;flex-direction:column;gap:14px">
         <div class="card">
-          <div class="ct"><b>Wann schauen die Leute?</b><span class="muted" style="font-size:12px">Uhrzeit, letzte 30 Tage</span></div>
+          <div class="ct"><b>Wann sind die Leute da?</b><span class="muted" style="font-size:12px" id="vHoursSub">Ø Besucher je Stunde</span></div>
           <div class="vbars hours" id="vHours"></div>
           <div class="vaxis"><span>0</span><span>6</span><span>12</span><span>18</span><span>23 Uhr</span></div>
+          <div class="mini" id="vHoursNote" style="margin-top:-8px"></div>
+        </div>
+        <div class="card">
+          <div class="ct"><b>Wochentag × Uhrzeit</b><span class="muted" style="font-size:12px">Ø Besucher, je heller desto mehr</span></div>
+          <div class="heat" id="vHeat"></div>
+          <div class="mini" id="vHeatNote"></div>
         </div>
       </div>
       <div class="side">
@@ -214,7 +232,7 @@ td input{width:76px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,
         </div>
       </div>
     </div>
-    <div class="mini" style="padding:0 4px">Gezählt ohne Cookies und ohne gespeicherte IP-Adressen. „Besucher“ = verschiedene Geräte pro Tag. Deine eigenen Aufrufe (angemeldet) zählen nicht mit.</div>
+    <div class="mini" style="padding:0 4px">Gezählt ohne Cookies und ohne gespeicherte IP-Adressen. „Besucher“ = verschiedene Geräte pro Tag (bei den Uhrzeiten: pro Stunde). Deine eigenen Aufrufe (angemeldet) zählen nicht mit, Suchmaschinen und Überwachungen, die die Seite im festen Takt abrufen, auch nicht<span id="vAuto"></span>.</div>
   </section>
 
   <!-- Auswertung -->
@@ -364,8 +382,10 @@ async function loadLabor() {
 }
 
 // ---------- Besucher ----------
+let vDays = 30;
+const fmt1 = n => n >= 10 ? Math.round(n) : n.toLocaleString("de-DE", {maximumFractionDigits: 1});
 async function loadVisits() {
-  const r = await fetch("/api/admin/visits?days=30", {cache: "no-store"});
+  const r = await fetch("/api/admin/visits?days=" + vDays, {cache: "no-store"});
   if (r.status === 401) { location.reload(); return; }
   const v = await r.json();
   const dayName = d => new Date(d + "T12:00:00").toLocaleDateString("de-DE", {weekday: "short", day: "numeric", month: "numeric"});
@@ -379,17 +399,39 @@ async function loadVisits() {
     <div class="card kpi"><div class="muted" style="font-size:12px">geteilt (Link-Vorschau)</div><div class="v" style="color:var(--orange)">${v.month.previews}</div><div class="n">30 Tage · heute ${v.today.previews}</div></div>`;
   const maxD = Math.max(1, ...v.days.map(d => d.views));
   $("vDays").innerHTML = v.days.map(d =>
-    `<div class="b" title="${dayName(d.day)}: ${d.uniques} Besucher, ${d.views} Aufrufe, max. ${d.peak} gleichzeitig, ${d.reports} Meldungen, ${d.previews}× geteilt">
+    `<div class="b" title="${dayName(d.day)}: ${d.uniques} Besucher, ${d.views} Aufrufe, max. ${d.peak} gleichzeitig, ${d.reports} Meldungen, ${d.previews}× geteilt${d.auto ? `, ${d.auto} Automatik-Abrufe ausgefiltert` : ""}">
       <i style="height:${d.views / maxD * 100}%"></i><em style="height:${d.uniques / maxD * 100}%"></em></div>`).join("");
   const step = Math.ceil(v.days.length / 5);
   $("vDaysAxis").innerHTML = v.days.filter((d, i) => i % step === 0 || i === v.days.length - 1).map(d => `<span>${dayName(d.day)}</span>`).join("");
-  const maxH = Math.max(1, ...v.hours);
-  $("vHours").innerHTML = v.hours.map((n, h) => `<div class="b" title="${h}–${h + 1} Uhr: ${n} Aufrufe"><i style="height:${n / maxH * 100}%"></i></div>`).join("");
+  // Uhrzeit: Balken = Schnitt der ganzen Tage, weißer Strich = heute
+  const nowH = parseInt(new Date().toLocaleString("en-GB", {timeZone: "Europe/Berlin", hour: "2-digit", hourCycle: "h23"}), 10);
+  const maxH = Math.max(0.5, ...v.hours, ...v.hoursToday);
+  $("vHours").innerHTML = v.hours.map((n, h) => `<div class="b" title="${h}–${h + 1} Uhr: Ø ${fmt1(n)} Besucher · heute ${v.hoursToday[h]}">
+    <i style="height:${n / maxH * 100}%"></i>${h <= nowH ? `<u style="bottom:calc(${v.hoursToday[h] / maxH * 100}% - 1px)"></u>` : ""}</div>`).join("");
+  $("vHoursSub").textContent = `Ø ${v.fullDays} Tage · weiß = heute`;
+  const top = v.hours.map((n, h) => [n, h]).sort((a, b) => b[0] - a[0]).filter(x => x[0] > 0).slice(0, 3).sort((a, b) => a[1] - b[1]);
+  const quiet = v.hours.slice(0, 6).reduce((s, n) => s + n, 0);
+  $("vHoursNote").innerHTML = top.length
+    ? `Am meisten los: ${top.map(([n, h]) => `<b style="color:var(--text)">${h}–${h + 1} Uhr</b> (Ø ${fmt1(n)})`).join(", ")}. Nachts (0–6 Uhr) zusammen Ø ${fmt1(quiet)}.`
+    : "noch zu wenig Besucher";
+  const WD = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+  const maxC = Math.max(0.1, ...v.heat.flat().filter(x => x != null));
+  $("vHeat").innerHTML = `<span></span>` + Array.from({length: 24}, (_, h) => `<span class="hx">${h % 3 === 0 ? h : ""}</span>`).join("") +
+    v.heat.map((row, w) => `<span>${WD[w]}</span>` + row.map((n, h) => `<i title="${WD[w]} ${h}–${h + 1} Uhr: ${n == null ? "keine Daten" : "Ø " + fmt1(n) + " Besucher"}"${n ? ` style="background:rgba(61,220,132,${(0.12 + 0.88 * Math.sqrt(n / maxC)).toFixed(2)})"` : ""}></i>`).join("")).join("");
+  const cells = v.heat.flatMap((row, w) => row.map((n, h) => [n || 0, w, h])).sort((a, b) => b[0] - a[0]);
+  const byWd = v.heat.map(row => row.reduce((s, n) => s + (n || 0), 0));
+  const bestWd = byWd.indexOf(Math.max(...byWd)), lowWd = byWd.indexOf(Math.min(...byWd.filter((_, i) => v.heat[i].some(x => x != null))));
+  $("vHeatNote").innerHTML = cells[0][0] > 0
+    ? `Stärkste Stunde: <b style="color:var(--text)">${WD[cells[0][1]]} ${cells[0][2]}–${cells[0][2] + 1} Uhr</b> (Ø ${fmt1(cells[0][0])}). Bester Tag ${WD[bestWd]} (Ø ${fmt1(byWd[bestWd])} am Tag), ruhigster ${WD[lowWd]} (Ø ${fmt1(byWd[lowWd])}).`
+    : "noch zu wenig Besucher";
+  $("vAuto").textContent = v.autoMonth ? ` (30 Tage: ${v.autoMonth.toLocaleString("de-DE")} Abrufe ausgefiltert, heute ${v.autoToday})` : "";
   $("vRefs").innerHTML = v.refs.length
     ? v.refs.map(r => `<div class="row"><span style="flex:1;font-size:14px">${esc(r.ref)}</span><span class="mono" style="font-weight:700">${r.n}</span></div>`).join("")
     : `<div class="row muted">noch keine verlinkenden Seiten</div>`;
 }
 setInterval(() => { if (tab === "besucher" && !document.hidden) loadVisits(); }, 30000);
+$("vRange").addEventListener("click", e => { const b = e.target.closest("[data-d]"); if (!b) return; vDays = +b.dataset.d;
+  $("vRange").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); loadVisits(); });
 
 $("xsel").addEventListener("click", e => { const b = e.target.closest("[data-x]"); if (!b) return; xid = b.dataset.x; try { localStorage.setItem("nsAdminX", xid); } catch (e2) {} renderSel(); renderMessen(); renderAnalysis(); });
 $("tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (!b) return; tab = b.dataset.tab; renderSel(); if (tab === "auswertung") loadAnalysis(); if (tab === "besucher") loadVisits(); if (tab === "labor") loadLabor(); });

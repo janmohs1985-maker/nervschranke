@@ -4,6 +4,7 @@ Läuft hinter Traefik. Daten (SQLite, Schlüssel) liegen in /data.
 Das Admin-Passwort kommt aus der Umgebung (ADMIN_PASSWORD), es steht nie im Code.
 """
 import asyncio
+import bisect
 import hashlib
 import hmac
 import json
@@ -134,6 +135,14 @@ if "exact" not in [r[1] for r in _db.execute("PRAGMA table_info(reports)")]:
     _db.execute("ALTER TABLE reports ADD COLUMN exact INTEGER NOT NULL DEFAULT 0")
     _db.execute("UPDATE reports SET exact=1 WHERE source='admin'")
     _db.commit()
+# visits.first = erster Aufruf des Geräts an dem Tag, visits.uh = erster in der Stunde (so bleiben Besucherzahlen auch
+# nach dem Löschen der Tagescodes); kind='auto' = Überwachung/Skript, das die Seite im festen Takt abruft
+_migrate_visits = "uh" not in [r[1] for r in _db.execute("PRAGMA table_info(visits)")]
+if _migrate_visits:
+    _db.execute("ALTER TABLE visits ADD COLUMN first INTEGER NOT NULL DEFAULT 0")
+    _db.execute("ALTER TABLE visits ADD COLUMN uh INTEGER NOT NULL DEFAULT 0")
+_db.execute("CREATE INDEX IF NOT EXISTS visits_dayhash ON visits(day, vhash)")
+_db.commit()
 
 
 def db(sql, args=(), one=False):
@@ -218,7 +227,10 @@ NOCACHE = {"Cache-Control": "no-cache"}
 # ---------------------------------------------------------------- Besucherzählung
 
 TZ = ZoneInfo("Europe/Berlin")
-BOTS = ("bot", "crawl", "spider", "slurp", "curl", "wget", "python", "httpx", "go-http", "headless", "monitor")
+BOTS = ("bot", "crawl", "spider", "slurp", "curl", "wget", "python", "httpx", "go-http", "headless", "monitor",
+        "uptime", "kuma", "pingdom", "statuscake", "checkly", "okhttp", "node-fetch", "axios", "aiohttp", "java/",
+        "libwww", "scrapy", "lighthouse", "pagespeed", "gtmetrix", "zgrab", "nmap", "masscan")
+AUTO_MIN, AUTO_MAX = 6, 80    # ab 6 Aufrufen im festen Takt (oder mehr als 80 am Tag) gilt ein Gerät als Überwachung
 PREVIEWS = ("whatsapp", "telegrambot", "facebookexternalhit", "twitterbot", "signal", "discordbot", "slackbot",
             "linkedinbot", "skypeuripreview", "applebot", "iframely", "embedly", "mastodon")
 _active = {}          # vhash → zuletzt gesehen (nur im Speicher, für „gerade auf der Seite“)
@@ -267,17 +279,82 @@ def record_visit(request: Request):
         if host and not host.endswith("nervschranke.de") and not host.endswith("mohs.es"):
             ref = host.removeprefix("www.")[:60]
     mobile = 1 if any(m in ua for m in ("iphone", "android", "mobile")) else 0
-    db("INSERT INTO visits(ts, day, hour, kind, vhash, mobile, ref) VALUES(?,?,?,?,?,?,?)",
-       (time.time(), day, now.hour, kind, visitor_hash(request, day) if kind == "view" else None, mobile, ref))
+    vh = visitor_hash(request, day) if kind == "view" else None
+    first = uh = 0
+    if vh:
+        prev = db("SELECT ts, hour, kind FROM visits WHERE day=? AND vhash=?", (day, vh))
+        first = 0 if prev else 1
+        uh = 0 if any(p["hour"] == now.hour for p in prev) else 1
+        if any(p["kind"] == "auto" for p in prev):
+            kind = "auto"
+        elif len(prev) + 1 > AUTO_MAX or is_periodic([p["ts"] for p in prev] + [time.time()]):
+            kind = "auto"
+            db("UPDATE visits SET kind='auto' WHERE day=? AND vhash=?", (day, vh))
+    db("INSERT INTO visits(ts, day, hour, kind, vhash, mobile, ref, first, uh) VALUES(?,?,?,?,?,?,?,?,?)",
+       (time.time(), day, now.hour, kind, vh, mobile, ref, first, uh))
     if time.time() - _last_purge[0] > 3600:
         _last_purge[0] = time.time()
         purge_visitor_codes()
 
 
+def is_periodic(ts):
+    """Aufrufe im festen Takt (z. B. jede Minute)? So gleichmäßig lädt kein Mensch neu."""
+    ts = sorted(ts)
+    if len(ts) < AUTO_MIN:
+        return False
+    gaps = [b - a for a, b in zip(ts, ts[1:])]
+    m = statistics.median(gaps)
+    return m >= 20 and sum(1 for g in gaps if abs(g - m) <= 3) >= 0.8 * len(gaps)
+
+
+def migrate_visits():
+    """Einmalig: Überwachungs-Abrufe aus den bisherigen Zählungen herausnehmen und first/uh nachtragen."""
+    for day in [r["day"] for r in db("SELECT DISTINCT day FROM visits WHERE kind='view'")]:
+        rows = db("SELECT id, ts, hour, vhash, mobile, ref FROM visits WHERE kind='view' AND day=? ORDER BY ts", (day,))
+        if rows[0]["vhash"]:
+            by = {}
+            for x in rows:
+                by.setdefault(x["vhash"], []).append(x)
+            for lst in by.values():
+                if len(lst) > AUTO_MAX or is_periodic([x["ts"] for x in lst]):
+                    db(f"UPDATE visits SET kind='auto' WHERE id IN ({','.join(str(x['id']) for x in lst)})")
+                    continue
+                hours = set()
+                for i, x in enumerate(lst):
+                    db("UPDATE visits SET first=?, uh=? WHERE id=?", (int(i == 0), int(x["hour"] not in hours), x["id"]))
+                    hours.add(x["hour"])
+            continue
+        # Tagescodes schon gelöscht: Abrufe, die mit ihren Nachbarn genau im Takt liegen, sind die Überwachung
+        ts = [x["ts"] for x in rows if not x["mobile"] and not x["ref"]]
+        auto, takte = set(), set()
+        for t in ts:
+            for p in (60, 120, 300, 480, 600, 900):
+                hits = 0
+                for k in (-2, -1, 1, 2):
+                    i = bisect.bisect_left(ts, t + k * p - 2)
+                    hits += i < len(ts) and abs(ts[i] - (t + k * p)) <= 2
+                if hits >= 2:
+                    auto.add(t)
+                    takte.add(p)
+                    break
+        ids = [str(x["id"]) for x in rows if x["ts"] in auto]
+        if ids:
+            db(f"UPDATE visits SET kind='auto' WHERE id IN ({','.join(ids)})")
+        # Besucher je Stunde lassen sich hier nicht mehr trennen: jeder Aufruf zählt (eher etwas zu hoch)
+        db("UPDATE visits SET uh=1 WHERE kind='view' AND day=?", (day,))
+        u = db("SELECT v FROM kv WHERE k=?", ("uniq:" + day,), one=True)
+        if u and takte:
+            db("UPDATE kv SET v=? WHERE k=?", (str(max(0, int(u["v"]) - len(takte))), "uniq:" + day))
+
+
+if _migrate_visits:
+    migrate_visits()
+
+
 def purge_visitor_codes():
     """Tagescodes älter als gestern löschen – vorher die Zahl verschiedener Besucher je Tag merken."""
     keep_from = (datetime.now(TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
-    for row in db("SELECT day, COUNT(DISTINCT vhash) AS n FROM visits WHERE vhash IS NOT NULL AND day < ? GROUP BY day", (keep_from,)):
+    for row in db("SELECT day, COUNT(DISTINCT vhash) AS n FROM visits WHERE kind='view' AND vhash IS NOT NULL AND day < ? GROUP BY day", (keep_from,)):
         db("INSERT INTO kv(k, v) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", ("uniq:" + row["day"], str(row["n"])))
     db("UPDATE visits SET vhash=NULL WHERE vhash IS NOT NULL AND day < ?", (keep_from,))
     db("DELETE FROM visits WHERE ts < ?", (time.time() - 400 * 86400,))
@@ -1319,14 +1396,15 @@ async def admin_labor(request: Request):
 @app.get("/api/admin/visits")
 def admin_visits(request: Request, days: int = 30):
     need_admin(request)
-    days = max(1, min(days, 365))
+    days = max(7, min(days, 365))
     purge_visitor_codes()
     today = datetime.now(TZ).date()
-    day_list = [(today - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days - 1, -1, -1)]
+    span = max(days, 30)
+    day_list = [(today - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(span - 1, -1, -1)]
     first = day_list[0]
-    rows = db("SELECT day, kind, COUNT(*) AS n, COUNT(DISTINCT vhash) AS u, SUM(mobile) AS m FROM visits WHERE day >= ? GROUP BY day, kind", (first,))
+    rows = db("SELECT day, kind, COUNT(*) AS n, SUM(first) AS u, SUM(mobile) AS m FROM visits WHERE day >= ? GROUP BY day, kind", (first,))
     stored = {r["k"][5:]: int(r["v"]) for r in db("SELECT k, v FROM kv WHERE k >= ? AND k LIKE 'uniq:%'", ("uniq:" + first,))}
-    per = {d: {"day": d, "views": 0, "uniques": 0, "previews": 0, "reports": 0} for d in day_list}
+    per = {d: {"day": d, "views": 0, "uniques": 0, "previews": 0, "reports": 0, "auto": 0} for d in day_list}
     mobile = views_total = 0
     for r in rows:
         p = per.get(r["day"])
@@ -1335,19 +1413,37 @@ def admin_visits(request: Request, days: int = 30):
         if r["kind"] == "view":
             p["views"] = r["n"]
             p["uniques"] = r["u"] or stored.get(r["day"], 0)
-            mobile += r["m"] or 0
-            views_total += r["n"]
+            if r["day"] >= day_list[-30]:
+                mobile += r["m"] or 0
+                views_total += r["n"]
         elif r["kind"] == "preview":
             p["previews"] = r["n"]
-    for r in db("SELECT ts FROM reports WHERE ts > ?", (time.time() - (days + 1) * 86400,)):
+        elif r["kind"] == "auto":
+            p["auto"] = r["n"]
+    for r in db("SELECT ts FROM reports WHERE ts > ?", (time.time() - (span + 1) * 86400,)):
         d = datetime.fromtimestamp(r["ts"], TZ).strftime("%Y-%m-%d")
         if d in per:
             per[d]["reports"] += 1
-    hours = [0] * 24
-    for r in db("SELECT hour, COUNT(*) AS n FROM visits WHERE kind='view' AND day >= ? GROUP BY hour", (first,)):
-        hours[r["hour"]] = r["n"]
+
+    # Wann sind die Leute da? Besucher je Stunde (ein Gerät zählt pro Stunde einmal), Schnitt über ganze Tage mit Daten
+    rng = day_list[-days:]
+    have = db("SELECT MIN(day) AS d FROM visits WHERE kind='view'", one=True)["d"] or day_list[-1]
+    full = [d for d in rng[:-1] if d >= have]
+    wd_count = [0] * 7
+    for d in full:
+        wd_count[datetime.strptime(d, "%Y-%m-%d").weekday()] += 1
+    heat = [[0.0] * 24 for _ in range(7)]
+    hours, now_h = [0.0] * 24, [0] * 24
+    for r in db("SELECT day, hour, SUM(uh) AS n FROM visits WHERE kind='view' AND day >= ? GROUP BY day, hour", (rng[0],)):
+        if r["day"] == rng[-1]:
+            now_h[r["hour"]] = r["n"]
+        elif r["day"] in full:
+            hours[r["hour"]] += r["n"]
+            heat[datetime.strptime(r["day"], "%Y-%m-%d").weekday()][r["hour"]] += r["n"]
+    hours = [round(n / len(full), 2) if full else 0 for n in hours]
+    heat = [[round(n / wd_count[w], 2) if wd_count[w] else None for n in heat[w]] for w in range(7)]
     refs = [{"ref": r["ref"], "n": r["n"]} for r in
-            db("SELECT ref, COUNT(*) AS n FROM visits WHERE kind='view' AND ref IS NOT NULL AND day >= ? GROUP BY ref ORDER BY n DESC LIMIT 8", (first,))]
+            db("SELECT ref, COUNT(*) AS n FROM visits WHERE kind='view' AND ref IS NOT NULL AND day >= ? GROUP BY ref ORDER BY n DESC LIMIT 8", (rng[0],))]
     peaks = {r["k"][5:]: r["v"] for r in db("SELECT k, v FROM kv WHERE k >= ? AND k LIKE 'peak:%' AND k != 'peak:all'", ("peak:" + first,))}
     for d in day_list:
         per[d]["peak"] = int(peaks[d].split("|")[0]) if d in peaks else 0
@@ -1370,7 +1466,8 @@ def admin_visits(request: Request, days: int = 30):
         "week": {"views": total(7, "views"), "uniques": total(7, "uniques"), "previews": total(7, "previews")},
         "month": {"views": total(30, "views"), "uniques": total(30, "uniques"), "previews": total(30, "previews")},
         "mobileShare": (mobile / views_total) if views_total else None,
-        "days": series, "hours": hours, "refs": refs,
+        "days": series[-days:], "hours": hours, "hoursToday": now_h, "heat": heat, "fullDays": len(full),
+        "autoToday": series[-1]["auto"], "autoMonth": total(30, "auto"), "refs": refs,
     }
 
 
